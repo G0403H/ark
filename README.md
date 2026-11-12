@@ -17,7 +17,7 @@
   <b>Zero cloud dependencies. Zero external CDNs. Zero telecommunications required.</b>
 </p>
 
-[Key Features](#key-features) • [Showcase Gallery](#showcase-gallery) • [Interactive Tools](#interactive-field-tools) • [Hardware Links](#hardware-integrations) • [Quick Start](#quick-start) • [Documentation](docs/) • [License](#license)
+[About Project](ABOUT.md) • [Key Features](#key-features) • [Showcase Gallery](#showcase-gallery) • [Interactive Tools](#interactive-field-tools) • [Hardware Links](#hardware-integrations) • [Quick Start](#quick-start) • [Documentation](docs/) • [License](#license)
 
 </div>
 
@@ -210,6 +210,7 @@ npm run preview
 
 ## 📚 Documentation Index
 
+- [About & Humanitarian Mission](ABOUT.md) — Project origin, resilience philosophy, and offline distribution.
 - [System Architecture](docs/ARCHITECTURE.md) — Technical internals, memory footprints, and DSP pipelines.
 - [Tactical Security & Duress Codes](docs/TACTICAL_SECURITY.md) — App lock, SHA-256 hashing, and emergency panic wipes.
 - [Offline Data Packs](docs/DATA_PACKS.md) — Pre-bundled encyclopedias and instructions for importing ZIM / PDF / EPUB files.
