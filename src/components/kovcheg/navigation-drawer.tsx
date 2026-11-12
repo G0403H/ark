@@ -36,6 +36,7 @@ import { useBitChatStore } from "@/lib/kovcheg/bitchat/store";
 import { useTacticalSecurity } from "@/lib/kovcheg/tactical-security";
 import { useAppLockStore } from "@/lib/kovcheg/app-lock";
 import { AppLockSettingsModal } from "@/components/kovcheg/app-lock-screen";
+import { CustomSelect } from "@/components/kovcheg/custom-select";
 
 export function NavigationDrawer() {
   const isOpen = useArk((s) => s.drawerOpen);
@@ -455,24 +456,15 @@ export function NavigationDrawer() {
                 <Globe size={15} />
                 {t("langSelect", lang)}:
               </span>
-              <select
-                className="select"
+              <CustomSelect
+                variant="compact"
                 value={lang}
-                onChange={(e) => setLang(e.target.value as any)}
-                style={{
-                  margin: 0,
-                  padding: "0.3rem 0.6rem",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {LANGUAGES.map((l) => (
-                  <option key={l.code} value={l.code}>
-                    {l.code === "ru" ? "🇷🇺 Русский" : l.code === "en" ? "🇬🇧 English" : "🇸🇦 العربية"}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setLang(v as any)}
+                options={LANGUAGES.map((l) => ({
+                  value: l.code,
+                  label: l.code === "ru" ? "🇷🇺 Русский" : l.code === "en" ? "🇬🇧 English" : "🇸🇦 العربية",
+                }))}
+              />
             </div>
 
             {/* Security Section 1: Master Application Password (App Lock) */}

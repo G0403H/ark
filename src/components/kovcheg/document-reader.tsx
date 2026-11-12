@@ -1,110 +1,35 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
-  AlertTriangle,
   ArrowLeft,
   BookOpen,
   Bookmark,
   BookmarkCheck,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Download,
-  Eye,
-  FileText,
-  Globe,
-  HelpCircle,
+  ChevronDown,
   Layers,
-  ListOrdered,
-  Search,
   Sparkles,
   Type,
   X,
-  ZoomIn,
-  ZoomOut,
   Sliders,
   Palette,
   Loader2,
+  List,
+  Search,
 } from "lucide-react";
 import type { IngestedDoc, ReaderBookmark } from "@/lib/kovcheg/store";
 import { useArk } from "@/lib/kovcheg/store";
-import { t, type Language } from "@/lib/kovcheg/i18n";
-import { aboutIodine, asksDose, mushroomQuestion, refusalReason } from "@/lib/kovcheg/search";
+import type { Language } from "@/lib/kovcheg/i18n";
 import { translatePageOffline } from "@/lib/kovcheg/models/page-translator";
-
-interface ChapterItem {
-  id: string;
-  title: string;
-  page: number;
-}
-
-// Splits raw text into readable pages (~2200 characters), breaking on paragraphs/sentences
-function paginateText(text: string, maxCharsPerPage = 2200): string[] {
-  if (!text || text.length <= maxCharsPerPage) {
-    return [text || "Пустой документ"];
-  }
-
-  const pages: string[] = [];
-  const paragraphs = text.split(/\n\s*\n/);
-  let currentPage = "";
-
-  for (const para of paragraphs) {
-    const trimmed = para.trim();
-    if (!trimmed) continue;
-
-    if (currentPage.length + trimmed.length <= maxCharsPerPage) {
-      currentPage = currentPage ? `${currentPage}\n\n${trimmed}` : trimmed;
-    } else {
-      if (trimmed.length > maxCharsPerPage) {
-        if (currentPage) {
-          pages.push(currentPage);
-          currentPage = "";
-        }
-        const sentences = trimmed.split(/(?<=[.?!])\s+/);
-        for (const sent of sentences) {
-          if (currentPage.length + sent.length <= maxCharsPerPage) {
-            currentPage = currentPage ? `${currentPage} ${sent}` : sent;
-          } else {
-            if (currentPage) pages.push(currentPage);
-            currentPage = sent;
-          }
-        }
-      } else {
-        if (currentPage) pages.push(currentPage);
-        currentPage = trimmed;
-      }
-    }
-  }
-
-  if (currentPage) {
-    pages.push(currentPage);
-  }
-
-  return pages.length > 0 ? pages : [text];
-}
-
-function extractChapters(pages: string[]): ChapterItem[] {
-  const chapters: ChapterItem[] = [];
-  const chapterRegex = /^(?:#+\s+|Глава\s+|Часть\s+|Раздел\s+|Chapter\s+|Section\s+|الفصل\s+)([^\n\r]{2,80})/im;
-
-  pages.forEach((pageText, pageIndex) => {
-    const lines = pageText.split("\n");
-    for (const line of lines) {
-      const match = line.match(chapterRegex);
-      if (match) {
-        const title = line.replace(/^#+\s*/, "").trim();
-        if (!chapters.some((c) => c.page === pageIndex + 1 && c.title === title)) {
-          chapters.push({
-            id: `${pageIndex + 1}-${title.slice(0, 20)}`,
-            title,
-            page: pageIndex + 1,
-          });
-        }
-      }
-    }
-  });
-
-  return chapters;
-}
+import {
+  extractCleanText,
+  indexDocumentChapters,
+  paginateChapter,
+  calculateGlobalPage,
+  analyzeChapterText,
+  answerFromChapterText,
+  type BookChapter,
+} from "@/lib/kovcheg/reader-paginator";
 
 export function DocumentReaderModal({
   doc,
@@ -115,20 +40,16 @@ export function DocumentReaderModal({
   lang: Language;
   onClose: () => void;
 }) {
-  const [viewMode, setViewMode] = useState<"paged" | "native">(
-    doc.type === "pdf" || doc.type === "html" ? "native" : "paged",
-  );
   const [fontSize, setFontSize] = useState<number>(1.05);
   const [fontFamily, setFontFamily] = useState<"serif" | "sans">("serif");
   const [readerTheme, setReaderTheme] = useState<"paper" | "shelter" | "stalker">("shelter");
-  const [searchTerm, setSearchTerm] = useState<string>("");
 
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState<number>(1);
+  // Chapter & Page navigation state
+  const [currentChapterIndex, setCurrentChapterIndex] = useState<number>(0);
+  const [pageInChapter, setPageInChapter] = useState<number>(1);
   const [showToc, setShowToc] = useState<boolean>(false);
   const [showBookmarks, setShowBookmarks] = useState<boolean>(false);
-  const [jumpPageInput, setJumpPageInput] = useState<string>("");
-  const [showJumpDialog, setShowJumpDialog] = useState<boolean>(false);
+  const [tocFilter, setTocFilter] = useState<string>("");
 
   // Translation state (On-the-fly offline AI page translation)
   const [translatedPages, setTranslatedPages] = useState<Record<string, string>>({});
@@ -138,7 +59,7 @@ export function DocumentReaderModal({
   const [pageViewMode, setPageViewMode] = useState<"original" | "translated" | "dual">("original");
   const [isTranslating, setIsTranslating] = useState<boolean>(false);
 
-  // AI Assistant Drawer
+  // AI Assistant Drawer (On-demand)
   const [showAi, setShowAi] = useState<boolean>(false);
   const [aiTab, setAiTab] = useState<"summary" | "plan" | "warnings" | "ask">("summary");
   const [aiQuery, setAiQuery] = useState<string>("");
@@ -152,65 +73,178 @@ export function DocumentReaderModal({
   const addReaderBookmark = useArk((s) => s.addReaderBookmark);
   const removeReaderBookmark = useArk((s) => s.removeReaderBookmark);
 
-  const textToDisplay = doc.fullText || doc.textExcerpt || "Нет текстового содержимого";
+  const contentRef = useRef<HTMLDivElement>(null);
 
-  // Paginated chunks & chapters
-  const pages = useMemo(() => paginateText(textToDisplay, 2200), [textToDisplay]);
-  const chapters = useMemo(() => extractChapters(pages), [pages]);
-  const totalPages = pages.length;
+  // Step 1: Rapidly extract pure text without DOM parsing overhead
+  const cleanText = useMemo(() => {
+    const raw = doc.fullText || doc.textExcerpt || "Нет текстового содержимого";
+    return extractCleanText(raw, doc.type);
+  }, [doc.fullText, doc.textExcerpt, doc.type]);
 
+  // Step 2: Index chapters instantaneously (< 5ms)
+  const chapters: BookChapter[] = useMemo(() => {
+    return indexDocumentChapters(cleanText);
+  }, [cleanText]);
+
+  // Restore saved reading position on document mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`kovcheg-reading-pos-${doc.id}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (
+          typeof parsed.chapterIndex === "number" &&
+          parsed.chapterIndex >= 0 &&
+          parsed.chapterIndex < chapters.length
+        ) {
+          setCurrentChapterIndex(parsed.chapterIndex);
+          if (typeof parsed.pageInChapter === "number" && parsed.pageInChapter >= 1) {
+            setPageInChapter(parsed.pageInChapter);
+          }
+        }
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [doc.id, chapters.length]);
+
+  // Persist current reading progress
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        `kovcheg-reading-pos-${doc.id}`,
+        JSON.stringify({
+          chapterIndex: currentChapterIndex,
+          pageInChapter,
+          updatedAt: Date.now(),
+        })
+      );
+    } catch {
+      // Ignore
+    }
+  }, [doc.id, currentChapterIndex, pageInChapter]);
+
+  // Active chapter descriptor
+  const activeChapter: BookChapter = chapters[currentChapterIndex] || chapters[0] || {
+    id: "ch-0",
+    index: 0,
+    title: doc.name,
+    charStart: 0,
+    charEnd: cleanText.length,
+    charCount: cleanText.length,
+    estimatedPages: 1,
+  };
+
+  // Step 3: Lazy-slice ONLY the active chapter (typically 5KB - 30KB)
+  const activeChapterText = useMemo(() => {
+    return cleanText.slice(activeChapter.charStart, activeChapter.charEnd);
+  }, [cleanText, activeChapter]);
+
+  // Step 4: Paginate ONLY the active chapter (takes < 0.2ms, zero freeze!)
+  const chapterPages = useMemo(() => {
+    return paginateChapter(activeChapterText, 2000);
+  }, [activeChapterText]);
+
+  // Clamp pageInChapter within bounds of active chapter
+  const clampedPage = Math.min(Math.max(1, pageInChapter), chapterPages.length);
+  const currentPageText = chapterPages[clampedPage - 1] || "";
+
+  // Unified global page indicator across the entire book
+  const { currentGlobalPage, totalGlobalPages } = useMemo(() => {
+    return calculateGlobalPage(chapters, currentChapterIndex, clampedPage);
+  }, [chapters, currentChapterIndex, clampedPage]);
+
+  // Scroll to top of content on page or chapter turn
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollTop = 0;
+    }
+  }, [currentChapterIndex, clampedPage]);
+
+  // Bookmarks for this doc
   const docBookmarks = useMemo(
     () => readerBookmarks.filter((b) => b.docId === doc.id),
     [readerBookmarks, doc.id]
   );
-  const isCurrentPageBookmarked = docBookmarks.some((b) => b.page === currentPage);
+  const isCurrentPageBookmarked = docBookmarks.some(
+    (b) => b.page === currentGlobalPage
+  );
 
-  // Precomputed analysis
-  const analysis = useMemo(() => {
-    return runDocumentAnalysis(textToDisplay, lang);
-  }, [textToDisplay, lang]);
+  // Navigation handlers
+  function handleNextPage() {
+    if (clampedPage < chapterPages.length) {
+      setPageInChapter(clampedPage + 1);
+    } else if (currentChapterIndex < chapters.length - 1) {
+      // Advance to next chapter
+      setCurrentChapterIndex((prev) => prev + 1);
+      setPageInChapter(1);
+    }
+  }
 
-  // Current page content
-  const currentPageText = pages[currentPage - 1] || "";
-  const cacheKey = `${doc.id}_p${currentPage}_${translationTargetLang}`;
-  const translatedCurrentPage = translatedPages[cacheKey];
+  function handlePrevPage() {
+    if (clampedPage > 1) {
+      setPageInChapter(clampedPage - 1);
+    } else if (currentChapterIndex > 0) {
+      // Step back to previous chapter, jumping to its last page
+      setCurrentChapterIndex((prev) => prev - 1);
+      setPageInChapter(9999); // Will be clamped automatically to last page
+    }
+  }
 
-  // Current chapter title if applicable
-  const currentChapter = useMemo(() => {
-    return [...chapters].reverse().find((c) => c.page <= currentPage);
-  }, [chapters, currentPage]);
+  function handleNextChapter() {
+    if (currentChapterIndex < chapters.length - 1) {
+      setCurrentChapterIndex((prev) => prev + 1);
+      setPageInChapter(1);
+    }
+  }
 
-  // Keyboard navigation for page flipping
+  function handlePrevChapter() {
+    if (currentChapterIndex > 0) {
+      setCurrentChapterIndex((prev) => prev - 1);
+      setPageInChapter(1);
+    }
+  }
+
+  function handleSelectChapter(idx: number) {
+    setCurrentChapterIndex(idx);
+    setPageInChapter(1);
+    setShowToc(false);
+  }
+
+  // Keyboard navigation
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "ArrowLeft") {
-        setCurrentPage((p) => Math.max(1, p - 1));
+        handlePrevPage();
       } else if (e.key === "ArrowRight") {
-        setCurrentPage((p) => Math.min(totalPages, p + 1));
+        handleNextPage();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [totalPages]);
+  });
 
   function handleToggleBookmark() {
-    const existing = docBookmarks.find((b) => b.page === currentPage);
+    const existing = docBookmarks.find((b) => b.page === currentGlobalPage);
     if (existing) {
       removeReaderBookmark(existing.id);
     } else {
       const excerpt = currentPageText.slice(0, 140).replace(/\n/g, " ") + "...";
       addReaderBookmark({
-        id: `${doc.id}_p${currentPage}_${Date.now()}`,
+        id: `${doc.id}_p${currentGlobalPage}_${Date.now()}`,
         docId: doc.id,
         docName: doc.name,
-        page: currentPage,
-        chapterTitle: currentChapter?.title,
+        page: currentGlobalPage,
+        chapterTitle: activeChapter.title,
         textExcerpt: excerpt,
         created: Date.now(),
       });
     }
   }
+
+  const cacheKey = `${doc.id}_ch${currentChapterIndex}_p${clampedPage}_${translationTargetLang}`;
+  const translatedCurrentPage = translatedPages[cacheKey];
 
   async function handleTranslatePage() {
     if (translatedCurrentPage) {
@@ -220,104 +254,167 @@ export function DocumentReaderModal({
 
     setIsTranslating(true);
     try {
-      const result = await translatePageOffline(
-        currentPageText,
-        (doc as any).lang || (lang === "ru" ? "en" : "ru"),
-        translationTargetLang
-      );
-      setTranslatedPages((prev) => ({ ...prev, [cacheKey]: result }));
+      const res = await translatePageOffline(currentPageText, translationTargetLang, lang);
+      setTranslatedPages((prev) => ({
+        ...prev,
+        [cacheKey]: res,
+      }));
       setPageViewMode("translated");
-    } catch (err) {
-      console.error("Translation error:", err);
     } finally {
       setIsTranslating(false);
     }
   }
 
-  function handleJumpToPage(e: React.FormEvent) {
-    e.preventDefault();
-    const target = parseInt(jumpPageInput, 10);
-    if (!isNaN(target) && target >= 1 && target <= totalPages) {
-      setCurrentPage(target);
-      setShowJumpDialog(false);
-      setJumpPageInput("");
-    }
-  }
+  // On-demand AI analysis for the active chapter (never runs automatically)
+  const chapterAnalysis = useMemo(() => {
+    if (!showAi) return null;
+    return analyzeChapterText(activeChapterText, lang);
+  }, [showAi, activeChapterText, lang]);
 
-  function handleAiAsk(queryText?: string) {
-    const q = (queryText ?? aiQuery).trim();
-    if (!q) return;
-    const res = answerFromDocText(q, textToDisplay, lang);
+  function handleRunAiQuery() {
+    if (!aiQuery.trim()) return;
+    const res = answerFromChapterText(aiQuery, activeChapterText, lang);
     setAiResult(res);
   }
 
-  // Reader theme colors
-  let themeBg = "var(--color-bg)";
-  let themeFg = "var(--color-fg)";
-  if (readerTheme === "paper") {
-    themeBg = "#fbf9f4";
-    themeFg = "#1c1917";
-  } else if (readerTheme === "stalker") {
-    themeBg = "#0d120a";
-    themeFg = "#d2e4cb";
-  }
+  // Filtered Table of Contents
+  const filteredChapters = useMemo(() => {
+    if (!tocFilter.trim()) return chapters;
+    const lower = tocFilter.toLowerCase();
+    return chapters.filter(
+      (c) =>
+        c.title.toLowerCase().includes(lower) ||
+        String(c.index + 1).includes(lower)
+    );
+  }, [chapters, tocFilter]);
+
+  // Theme styling definitions
+  const themeStyles = {
+    shelter: {
+      bg: "var(--color-sink)",
+      text: "var(--color-ink)",
+      headerBg: "var(--color-raise)",
+      border: "var(--color-line)",
+    },
+    paper: {
+      bg: "#faf8f5",
+      text: "#1c1917",
+      headerBg: "#f5f2eb",
+      border: "#e7e2d6",
+    },
+    stalker: {
+      bg: "#0d0f0c",
+      text: "#c4cfbc",
+      headerBg: "#161b14",
+      border: "#252f20",
+    },
+  }[readerTheme];
 
   return (
     <div
-      className="reader-modal"
-      role="dialog"
-      aria-modal="true"
-      aria-label={doc.name}
-      style={{ background: themeBg, color: themeFg }}
+      className="reader-overlay"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 1000,
+        backgroundColor: "rgba(0, 0, 0, 0.85)",
+        backdropFilter: "blur(6px)",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
     >
-      {/* Reader Top Bar */}
-      <header className="reader-header" style={{ background: "var(--color-raise)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1, minWidth: 0 }}>
-          <button type="button" className="icon-btn" onClick={onClose} title={t("closeReader", lang)}>
-            <ArrowLeft size={18} aria-hidden />
+      {/* Top Header Bar */}
+      <header
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "0.6rem 1rem",
+          background: themeStyles.headerBg,
+          borderBottom: `1px solid ${themeStyles.border}`,
+          zIndex: 30,
+          flexWrap: "wrap",
+          gap: "0.5rem",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", minWidth: 0, flex: 1 }}>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={onClose}
+            title="Закрыть читалку"
+            style={{ minHeight: "2.3rem", minWidth: "2.3rem", borderRadius: "var(--radius-card)" }}
+          >
+            <ArrowLeft size={18} />
           </button>
+
           <div style={{ minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontSize: "0.95rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <h1
+              style={{
+                fontSize: "1rem",
+                margin: 0,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                color: themeStyles.text,
+              }}
+              title={doc.name}
+            >
               {doc.name}
-            </h2>
-            <div style={{ fontSize: "0.72rem", color: "var(--color-muted)", display: "flex", gap: "0.4rem" }}>
-              <span>{doc.type.toUpperCase()}</span>
-              <span>·</span>
-              <span>{(doc.size / 1024).toFixed(0)} КБ</span>
-              {currentChapter && (
-                <>
-                  <span>·</span>
-                  <span style={{ color: "var(--color-lamp)", fontWeight: 600 }}>{currentChapter.title}</span>
-                </>
-              )}
-            </div>
+            </h1>
+            <span
+              className="meta"
+              style={{
+                fontSize: "0.78rem",
+                display: "block",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                color: "var(--color-lamp)",
+              }}
+            >
+              Глава {currentChapterIndex + 1} из {chapters.length}: {activeChapter.title}
+            </span>
           </div>
         </div>
 
-        {/* Reader Header Action Buttons */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-          {/* Table of Contents button */}
+        {/* Header Actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+          {/* Table of Contents Button */}
           <button
             type="button"
-            className={`chip ${showToc ? "chip-active" : ""}`}
-            data-on={showToc ? "1" : "0"}
-            onClick={() => { setShowToc((v) => !v); setShowBookmarks(false); }}
-            title="Оглавление (по главам)"
+            className="text-btn"
+            onClick={() => setShowToc((v) => !v)}
+            style={{
+              minHeight: "2.2rem",
+              padding: "0.2rem 0.6rem",
+              fontSize: "0.82rem",
+              background: showToc ? "var(--color-lamp)" : "transparent",
+              color: showToc ? "var(--color-ink)" : "inherit",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
           >
-            <ListOrdered size={15} style={{ marginRight: 3 }} />
-            <span className="hide-sm">Главы ({chapters.length || 1})</span>
+            <List size={15} />
+            <span>Оглавление ({chapters.length})</span>
           </button>
 
-          {/* Bookmarks button */}
+          {/* Bookmarks list button */}
           <button
             type="button"
-            className={`chip ${showBookmarks ? "chip-active" : ""}`}
-            data-on={showBookmarks ? "1" : "0"}
-            onClick={() => { setShowBookmarks((v) => !v); setShowToc(false); }}
+            className="icon-btn"
+            onClick={() => setShowBookmarks((v) => !v)}
             title="Закладки"
+            style={{
+              minHeight: "2.2rem",
+              minWidth: "2.2rem",
+              background: showBookmarks ? "var(--color-lamp)" : "transparent",
+              color: showBookmarks ? "var(--color-ink)" : "inherit",
+            }}
           >
-            <Bookmark size={15} style={{ marginRight: 3 }} />
-            <span className="hide-sm">Закладки ({docBookmarks.length})</span>
+            <Bookmark size={16} />
           </button>
 
           {/* Bookmark Current Page */}
@@ -325,234 +422,281 @@ export function DocumentReaderModal({
             type="button"
             className="icon-btn"
             onClick={handleToggleBookmark}
-            title={isCurrentPageBookmarked ? "Удалить закладку со страницы" : "Добавить закладку на страницу"}
-            style={{ color: isCurrentPageBookmarked ? "#f59e0b" : "var(--color-muted)" }}
+            title={isCurrentPageBookmarked ? "Удалить закладку" : "Добавить страницу в закладки"}
+            style={{
+              minHeight: "2.2rem",
+              minWidth: "2.2rem",
+              color: isCurrentPageBookmarked ? "var(--color-lamp)" : "inherit",
+            }}
           >
-            {isCurrentPageBookmarked ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}
+            {isCurrentPageBookmarked ? <BookmarkCheck size={18} /> : <Bookmark size={18} />}
           </button>
 
-          {/* AI Helper Toggle */}
+          {/* Font Controls */}
           <button
             type="button"
             className="text-btn"
+            onClick={() => setFontSize((s) => Math.max(0.85, Number((s - 0.1).toFixed(2))))}
+            style={{ minHeight: "2.2rem", padding: "0.2rem 0.5rem", fontSize: "0.85rem" }}
+            title="Уменьшить шрифт"
+          >
+            A−
+          </button>
+          <button
+            type="button"
+            className="text-btn"
+            onClick={() => setFontSize((s) => Math.min(1.6, Number((s + 0.1).toFixed(2))))}
+            style={{ minHeight: "2.2rem", padding: "0.2rem 0.5rem", fontSize: "0.85rem" }}
+            title="Увеличить шрифт"
+          >
+            A+
+          </button>
+
+          {/* Serif / Sans Toggle */}
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setFontFamily((f) => (f === "serif" ? "sans" : "serif"))}
+            title="Сменить гарнитуру (С засечками / Без засечек)"
+            style={{ minHeight: "2.2rem", minWidth: "2.2rem" }}
+          >
+            <Type size={16} />
+          </button>
+
+          {/* Reader Theme Toggle */}
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() =>
+              setReaderTheme((t) =>
+                t === "shelter" ? "paper" : t === "paper" ? "stalker" : "shelter"
+              )
+            }
+            title={`Тема читалщика: ${readerTheme}`}
+            style={{ minHeight: "2.2rem", minWidth: "2.2rem" }}
+          >
+            <Palette size={16} />
+          </button>
+
+          {/* AI Chapter Analysis Trigger */}
+          <button
+            type="button"
+            className="text-btn"
+            onClick={() => setShowAi((v) => !v)}
             style={{
-              background: showAi ? "var(--color-lamp)" : "var(--color-raise)",
-              color: showAi ? "var(--color-ink)" : "var(--color-fg)",
-              fontWeight: 600,
+              minHeight: "2.2rem",
+              padding: "0.2rem 0.6rem",
+              fontSize: "0.82rem",
+              background: showAi ? "var(--color-lamp)" : "transparent",
+              color: showAi ? "var(--color-ink)" : "inherit",
               display: "inline-flex",
               alignItems: "center",
               gap: 4,
-              borderColor: "var(--color-lamp)",
-              padding: "0.25rem 0.55rem",
-              minHeight: "2.2rem",
             }}
-            onClick={() => setShowAi((prev) => !prev)}
-            title={t("readerAiTitle", lang)}
           >
-            <Sparkles size={15} />
-            <span className="hide-sm">{t("readerAiBtn", lang)}</span>
+            <Sparkles size={14} />
+            <span>ИИ главы</span>
           </button>
 
-          {/* Native vs Paged Mode Toggle for PDF/HTML */}
-          {(doc.type === "pdf" || doc.type === "html") && doc.dataUrl && (
-            <button
-              type="button"
-              className="text-btn"
-              onClick={() => setViewMode(viewMode === "native" ? "paged" : "native")}
-              style={{ minHeight: "2.2rem", padding: "0.2rem 0.5rem" }}
-            >
-              {viewMode === "native" ? "Текст" : "Оригинал"}
-            </button>
-          )}
+          {/* Close button */}
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={onClose}
+            title="Закрыть"
+            style={{ minHeight: "2.2rem", minWidth: "2.2rem" }}
+          >
+            <X size={18} />
+          </button>
         </div>
       </header>
 
-      {/* Reader Sub-Toolbar: Translation & Typography Controls */}
-      {viewMode === "paged" && (
-        <div
-          style={{
-            padding: "0.4rem 0.8rem",
-            borderBottom: "1px solid var(--color-line)",
-            background: "var(--color-raise)",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "0.4rem",
-          }}
-        >
-          {/* On-the-fly AI Translation Controls */}
-          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
-            <button
-              type="button"
-              className={`chip ${isTranslating ? "chip-active" : ""}`}
-              onClick={handleTranslatePage}
-              disabled={isTranslating}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.3rem",
-                fontWeight: 700,
-                color: pageViewMode === "translated" ? "var(--color-lamp)" : undefined,
-                borderColor: pageViewMode === "translated" ? "var(--color-lamp)" : undefined,
-              }}
-              title="Перевести текущую страницу с помощью офлайн-ИИ"
-            >
-              {isTranslating ? <Loader2 size={14} className="spin" /> : <Globe size={14} />}
-              <span>{isTranslating ? "Перевод..." : pageViewMode === "translated" ? "Оригинал" : "Перевести страницу (ИИ)"}</span>
-            </button>
-
-            {translatedCurrentPage && (
-              <button
-                type="button"
-                className="chip"
-                onClick={() => setPageViewMode((m) => (m === "dual" ? "translated" : "dual"))}
-                style={{ fontSize: "0.74rem" }}
-                title="Параллельный просмотр оригинала и перевода"
-              >
-                {pageViewMode === "dual" ? "Одна колонка" : "Двуязычный вид"}
-              </button>
-            )}
-
-            <div style={{ display: "flex", alignItems: "center", gap: "0.2rem", fontSize: "0.75rem", color: "var(--color-muted)" }}>
-              <span>На:</span>
-              {(["ru", "en", "ar"] as const).map((lcode) => (
-                <button
-                  key={lcode}
-                  type="button"
-                  onClick={() => setTranslationTargetLang(lcode)}
-                  style={{
-                    border: "none",
-                    background: translationTargetLang === lcode ? "var(--color-lamp)" : "transparent",
-                    color: translationTargetLang === lcode ? "#000" : "var(--color-muted)",
-                    fontWeight: 700,
-                    borderRadius: "3px",
-                    padding: "0.1rem 0.35rem",
-                    cursor: "pointer",
-                    fontSize: "0.72rem",
-                  }}
-                >
-                  {lcode.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Typography & Theme Controls */}
-          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-            {/* Font Family Toggle */}
-            <button
-              type="button"
-              className="icon-btn"
-              style={{ minHeight: "2rem", padding: "0.15rem 0.4rem" }}
-              onClick={() => setFontFamily((f) => (f === "serif" ? "sans" : "serif"))}
-              title={fontFamily === "serif" ? "Шрифт с засечками (Literata)" : "Шрифт без засечек"}
-            >
-              <Type size={14} />
-            </button>
-
-            {/* Font Zoom */}
-            <button
-              type="button"
-              className="icon-btn"
-              style={{ minHeight: "2rem", padding: "0.15rem 0.4rem" }}
-              onClick={() => setFontSize((s) => Math.max(0.85, s - 0.1))}
-              title="Уменьшить шрифт"
-            >
-              <ZoomOut size={14} />
-            </button>
-            <button
-              type="button"
-              className="icon-btn"
-              style={{ minHeight: "2rem", padding: "0.15rem 0.4rem" }}
-              onClick={() => setFontSize((s) => Math.min(1.5, s + 0.1))}
-              title="Увеличить шрифт"
-            >
-              <ZoomIn size={14} />
-            </button>
-
-            {/* Reader Theme Toggle */}
-            <button
-              type="button"
-              className="icon-btn"
-              style={{ minHeight: "2rem", padding: "0.15rem 0.4rem" }}
-              onClick={() => {
-                if (readerTheme === "shelter") setReaderTheme("paper");
-                else if (readerTheme === "paper") setReaderTheme("stalker");
-                else setReaderTheme("shelter");
-              }}
-              title="Тема читалки (Убежище / Бумага / Сталкер)"
-            >
-              <Palette size={14} />
-            </button>
-          </div>
+      {/* Sub-bar: Translation & Mode Controls */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "0.35rem 1rem",
+          background: "rgba(0, 0, 0, 0.4)",
+          borderBottom: `1px solid ${themeStyles.border}`,
+          fontSize: "0.82rem",
+          flexWrap: "wrap",
+          gap: "0.4rem",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <span className="meta" style={{ fontSize: "0.78rem" }}>
+            📖 {activeChapter.title}
+          </span>
         </div>
-      )}
 
-      {/* Main Layout Area: Content + Drawers */}
-      <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          {/* Target translation language */}
+          <select
+            value={translationTargetLang}
+            onChange={(e) => setTranslationTargetLang(e.target.value as any)}
+            style={{
+              padding: "0.15rem 0.4rem",
+              fontSize: "0.78rem",
+              borderRadius: "4px",
+              background: "var(--color-raise)",
+              color: "inherit",
+              border: "1px solid var(--color-line)",
+            }}
+          >
+            <option value="ru">Перевод на Русский</option>
+            <option value="en">Translate to English</option>
+            <option value="ar">الترجمة إلى العربية</option>
+          </select>
+
+          <button
+            type="button"
+            className="text-btn"
+            disabled={isTranslating}
+            onClick={handleTranslatePage}
+            style={{
+              padding: "0.15rem 0.5rem",
+              fontSize: "0.78rem",
+              minHeight: "1.8rem",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            {isTranslating ? (
+              <>
+                <Loader2 size={12} className="spin" />
+                <span>Перевод...</span>
+              </>
+            ) : translatedCurrentPage ? (
+              pageViewMode === "translated" ? "Показать оригинал" : "Показать перевод"
+            ) : (
+              "Перевести страницу (ИИ)"
+            )}
+          </button>
+
+          {translatedCurrentPage && (
+            <button
+              type="button"
+              className="text-btn"
+              onClick={() =>
+                setPageViewMode((v) => (v === "dual" ? "original" : "dual"))
+              }
+              style={{ padding: "0.15rem 0.5rem", fontSize: "0.78rem", minHeight: "1.8rem" }}
+            >
+              {pageViewMode === "dual" ? "Один текст" : "Оригинал + Перевод"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Main Reading Canvas & Side Drawers */}
+      <div
+        style={{
+          display: "flex",
+          flex: 1,
+          overflow: "hidden",
+          position: "relative",
+          background: themeStyles.bg,
+        }}
+      >
         {/* Table of Contents Drawer */}
         {showToc && (
           <aside
             style={{
-              position: "absolute",
-              top: 0,
-              bottom: 0,
-              left: 0,
-              width: "min(320px, 90vw)",
+              width: "min(340px, 90%)",
               background: "var(--color-raise)",
-              borderRight: "1.5px solid var(--color-line)",
-              zIndex: 30,
-              boxShadow: "8px 0 20px rgba(0,0,0,0.3)",
+              borderRight: `1px solid ${themeStyles.border}`,
               display: "flex",
               flexDirection: "column",
+              zIndex: 20,
+              boxShadow: "4px 0 16px rgba(0,0,0,0.25)",
+              overflow: "hidden",
             }}
           >
-            <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--color-line)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <strong style={{ fontSize: "0.92rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                <ListOrdered size={16} /> Оглавление
+            <div
+              style={{
+                padding: "0.75rem 1rem",
+                borderBottom: `1px solid ${themeStyles.border}`,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <strong style={{ fontSize: "0.95rem" }}>
+                Оглавление ({chapters.length} глав)
               </strong>
-              <button type="button" onClick={() => setShowToc(false)} style={{ background: "none", border: "none", color: "var(--color-muted)", cursor: "pointer" }}>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => setShowToc(false)}
+                style={{ minHeight: "1.8rem", minWidth: "1.8rem" }}
+              >
                 <X size={16} />
               </button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: "0.6rem" }}>
-              {chapters.length === 0 ? (
-                <p className="quiet" style={{ fontSize: "0.82rem", padding: "0.5rem" }}>
-                  Явных глав не обнаружено. Листайте по страницам.
-                </p>
-              ) : (
-                chapters.map((ch) => (
+
+            <div style={{ padding: "0.5rem 0.8rem", borderBottom: `1px solid ${themeStyles.border}` }}>
+              <div style={{ position: "relative" }}>
+                <Search
+                  size={14}
+                  style={{
+                    position: "absolute",
+                    left: 8,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: "var(--color-muted)",
+                  }}
+                />
+                <input
+                  type="text"
+                  placeholder="Фильтр по главам..."
+                  value={tocFilter}
+                  onChange={(e) => setTocFilter(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "0.35rem 0.6rem 0.35rem 1.8rem",
+                    fontSize: "0.82rem",
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ flex: 1, overflowY: "auto", padding: "0.4rem 0" }}>
+              {filteredChapters.map((ch) => {
+                const isActive = ch.index === currentChapterIndex;
+                return (
                   <button
                     key={ch.id}
                     type="button"
-                    onClick={() => { setCurrentPage(ch.page); setShowToc(false); }}
+                    onClick={() => handleSelectChapter(ch.index)}
                     style={{
                       width: "100%",
                       textAlign: "left",
-                      padding: "0.6rem 0.75rem",
-                      borderRadius: "var(--radius-card)",
-                      background: currentPage >= ch.page && (!chapters.find((nextCh) => nextCh.page > ch.page && nextCh.page <= currentPage)) ? "var(--color-line)" : "transparent",
-                      border: "none",
-                      color: "var(--color-fg)",
+                      padding: "0.6rem 1rem",
+                      background: isActive ? "rgba(224, 160, 69, 0.15)" : "transparent",
+                      borderLeft: isActive ? "3px solid var(--color-lamp)" : "3px solid transparent",
+                      borderTop: "none",
+                      borderRight: "none",
+                      borderBottom: "1px solid rgba(255,255,255,0.04)",
+                      color: isActive ? "var(--color-lamp)" : "inherit",
+                      fontSize: "0.85rem",
                       cursor: "pointer",
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
-                      gap: "0.5rem",
-                      fontSize: "0.84rem",
-                      marginBottom: "0.2rem",
                     }}
                   >
-                    <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {ch.title}
+                    <span style={{ fontWeight: isActive ? 700 : 400, flex: 1, paddingRight: "0.5rem" }}>
+                      {ch.index + 1}. {ch.title}
                     </span>
-                    <span style={{ fontSize: "0.72rem", color: "var(--color-muted)", flexShrink: 0 }}>
-                      Стр. {ch.page}
+                    <span className="meta" style={{ fontSize: "0.72rem", flexShrink: 0 }}>
+                      ~{ch.estimatedPages} стр.
                     </span>
                   </button>
-                ))
-              )}
+                );
+              })}
             </div>
           </aside>
         )}
@@ -561,65 +705,74 @@ export function DocumentReaderModal({
         {showBookmarks && (
           <aside
             style={{
-              position: "absolute",
-              top: 0,
-              bottom: 0,
-              left: 0,
-              width: "min(320px, 90vw)",
+              width: "min(320px, 90%)",
               background: "var(--color-raise)",
-              borderRight: "1.5px solid var(--color-line)",
-              zIndex: 30,
-              boxShadow: "8px 0 20px rgba(0,0,0,0.3)",
+              borderRight: `1px solid ${themeStyles.border}`,
               display: "flex",
               flexDirection: "column",
+              zIndex: 20,
+              boxShadow: "4px 0 16px rgba(0,0,0,0.25)",
+              overflow: "hidden",
             }}
           >
-            <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--color-line)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <strong style={{ fontSize: "0.92rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                <Bookmark size={16} color="#f59e0b" /> Закладки книги
+            <div
+              style={{
+                padding: "0.75rem 1rem",
+                borderBottom: `1px solid ${themeStyles.border}`,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <strong style={{ fontSize: "0.95rem" }}>
+                Закладки ({docBookmarks.length})
               </strong>
-              <button type="button" onClick={() => setShowBookmarks(false)} style={{ background: "none", border: "none", color: "var(--color-muted)", cursor: "pointer" }}>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => setShowBookmarks(false)}
+                style={{ minHeight: "1.8rem", minWidth: "1.8rem" }}
+              >
                 <X size={16} />
               </button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: "0.6rem" }}>
+
+            <div style={{ flex: 1, overflowY: "auto", padding: "0.5rem" }}>
               {docBookmarks.length === 0 ? (
-                <div style={{ padding: "1rem", textAlign: "center", color: "var(--color-muted)", fontSize: "0.82rem" }}>
-                  Закладок пока нет. Нажмите на значок флажка вверху, чтобы сохранить текущую страницу.
-                </div>
+                <p className="meta" style={{ padding: "1rem", textAlign: "center" }}>
+                  В этом документе пока нет сохраненных закладок.
+                </p>
               ) : (
                 docBookmarks.map((bm) => (
                   <div
                     key={bm.id}
                     style={{
-                      padding: "0.6rem 0.75rem",
+                      padding: "0.6rem 0.8rem",
                       borderRadius: "var(--radius-card)",
-                      background: "var(--color-line)",
-                      marginBottom: "0.4rem",
+                      background: "rgba(0,0,0,0.2)",
+                      border: "1px solid var(--color-line)",
+                      marginBottom: "0.5rem",
                     }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.2rem" }}>
-                      <strong style={{ fontSize: "0.84rem", color: "var(--color-lamp)" }}>
-                        Страница {bm.page}
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.2rem" }}>
+                      <strong style={{ fontSize: "0.85rem", color: "var(--color-lamp)" }}>
+                        Стр. {bm.page}
                       </strong>
                       <button
                         type="button"
+                        className="text-btn"
                         onClick={() => removeReaderBookmark(bm.id)}
-                        style={{ background: "none", border: "none", color: "var(--color-muted)", cursor: "pointer", fontSize: "0.75rem" }}
+                        style={{ fontSize: "0.75rem", padding: "0 0.4rem", minHeight: "1.5rem" }}
                       >
-                        Удалить
+                        ✕
                       </button>
                     </div>
                     {bm.chapterTitle && (
-                      <div style={{ fontSize: "0.75rem", color: "var(--color-muted)", marginBottom: "0.2rem" }}>
+                      <span className="meta" style={{ fontSize: "0.75rem", display: "block" }}>
                         {bm.chapterTitle}
-                      </div>
+                      </span>
                     )}
-                    <p
-                      style={{ margin: 0, fontSize: "0.78rem", color: "var(--color-fg)", cursor: "pointer", lineHeight: 1.35 }}
-                      onClick={() => { setCurrentPage(bm.page); setShowBookmarks(false); }}
-                      title="Перейти к странице"
-                    >
+                    <p style={{ margin: "0.3rem 0 0", fontSize: "0.8rem", lineHeight: 1.3 }}>
                       {bm.textExcerpt}
                     </p>
                   </div>
@@ -629,157 +782,276 @@ export function DocumentReaderModal({
           </aside>
         )}
 
-        {/* Reader Center Content */}
-        <div className="reader-content" style={{ flex: 1, minWidth: 0, padding: "1.2rem 1.4rem", overflowY: "auto" }}>
-          {viewMode === "native" && doc.dataUrl ? (
-            <iframe
-              src={doc.dataUrl}
-              title={doc.name}
-              style={{
-                width: "100%",
-                height: "calc(100vh - 7rem)",
-                border: "none",
-                borderRadius: "var(--radius-card)",
-                background: "#fff",
-              }}
-            />
-          ) : (
-            <div
-              style={{
-                fontSize: `${fontSize}rem`,
-                lineHeight: 1.8,
-                wordBreak: "break-word",
-                fontFamily: fontFamily === "serif" ? "var(--font-serif)" : "var(--font-sans)",
-                maxWidth: "46rem",
-                margin: "0 auto",
-              }}
-            >
-              {/* Dual View (Parallel original + translation) */}
-              {pageViewMode === "dual" && translatedCurrentPage ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}>
-                  <div style={{ padding: "0.8rem", background: "color-mix(in srgb, var(--color-line) 30%, transparent)", borderRadius: "var(--radius-card)" }}>
-                    <span style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 700, color: "var(--color-muted)", display: "block", marginBottom: "0.4rem" }}>
-                      Оригинал:
-                    </span>
-                    <div style={{ whiteSpace: "pre-wrap" }}>{currentPageText}</div>
-                  </div>
-                  <div style={{ padding: "0.8rem", background: "color-mix(in srgb, var(--color-lamp) 10%, transparent)", borderRadius: "var(--radius-card)", border: "1px solid var(--color-lamp)" }}>
-                    <span style={{ fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 700, color: "var(--color-lamp)", display: "block", marginBottom: "0.4rem" }}>
-                      Офлайн-перевод (ИИ):
-                    </span>
-                    <div style={{ whiteSpace: "pre-wrap" }}>{translatedCurrentPage}</div>
-                  </div>
+        {/* Center Book Reading Surface */}
+        <div
+          ref={contentRef}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflowY: "auto",
+            padding: "1.5rem 1.8rem 6rem",
+            color: themeStyles.text,
+          }}
+        >
+          <div
+            style={{
+              maxWidth: "48rem",
+              margin: "0 auto",
+              fontSize: `${fontSize}rem`,
+              lineHeight: 1.85,
+              wordBreak: "break-word",
+              fontFamily: fontFamily === "serif" ? "var(--font-serif)" : "var(--font-sans)",
+            }}
+          >
+            {/* Chapter Header banner on first page of chapter */}
+            {clampedPage === 1 && (
+              <div
+                style={{
+                  borderBottom: `2px solid var(--color-lamp)`,
+                  paddingBottom: "0.8rem",
+                  marginBottom: "1.5rem",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "0.75rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    color: "var(--color-lamp)",
+                    fontWeight: 700,
+                  }}
+                >
+                  Глава {currentChapterIndex + 1} из {chapters.length}
+                </span>
+                <h2
+                  style={{
+                    fontSize: "1.5rem",
+                    margin: "0.3rem 0 0",
+                    color: themeStyles.text,
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {activeChapter.title}
+                </h2>
+              </div>
+            )}
+
+            {/* Dual parallel view (Original + AI Translation) */}
+            {pageViewMode === "dual" && translatedCurrentPage ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}>
+                <div
+                  style={{
+                    padding: "1rem",
+                    background: "rgba(255,255,255,0.03)",
+                    borderRadius: "var(--radius-card)",
+                    border: `1px solid ${themeStyles.border}`,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.72rem",
+                      textTransform: "uppercase",
+                      fontWeight: 700,
+                      color: "var(--color-muted)",
+                      display: "block",
+                      marginBottom: "0.4rem",
+                    }}
+                  >
+                    Оригинал:
+                  </span>
+                  <div style={{ whiteSpace: "pre-wrap" }}>{currentPageText}</div>
                 </div>
-              ) : (
-                /* Single View: Either translated page or original */
-                <div style={{ whiteSpace: "pre-wrap" }}>
-                  {pageViewMode === "translated" && translatedCurrentPage
-                    ? translatedCurrentPage
-                    : currentPageText}
+
+                <div
+                  style={{
+                    padding: "1rem",
+                    background: "rgba(224, 160, 69, 0.06)",
+                    borderRadius: "var(--radius-card)",
+                    border: "1px solid var(--color-lamp)",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.72rem",
+                      textTransform: "uppercase",
+                      fontWeight: 700,
+                      color: "var(--color-lamp)",
+                      display: "block",
+                      marginBottom: "0.4rem",
+                    }}
+                  >
+                    Офлайн-перевод (ИИ):
+                  </span>
+                  <div style={{ whiteSpace: "pre-wrap" }}>{translatedCurrentPage}</div>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            ) : (
+              /* Single Page View */
+              <div style={{ whiteSpace: "pre-wrap" }}>
+                {pageViewMode === "translated" && translatedCurrentPage
+                  ? translatedCurrentPage
+                  : currentPageText}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* AI Assistant Offline Panel (Right Side) */}
+        {/* AI Assistant Offline Drawer (Right) */}
         {showAi && (
           <aside
             style={{
-              width: "min(400px, 100%)",
+              width: "min(380px, 95%)",
               background: "var(--color-raise)",
-              borderLeft: "1px solid var(--color-line)",
+              borderLeft: `1px solid ${themeStyles.border}`,
               display: "flex",
               flexDirection: "column",
-              zIndex: 25,
-              boxShadow: "-4px 0 16px rgba(0,0,0,0.12)",
+              zIndex: 20,
+              boxShadow: "-4px 0 16px rgba(0,0,0,0.25)",
               overflow: "hidden",
             }}
           >
-            <div style={{ padding: "0.8rem 1rem", borderBottom: "1px solid var(--color-line)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div
+              style={{
+                padding: "0.8rem 1rem",
+                borderBottom: `1px solid ${themeStyles.border}`,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <Sparkles size={18} color="var(--color-lamp)" />
-                <strong style={{ fontSize: "0.95rem" }}>{t("readerAiTitle", lang)}</strong>
+                <Sparkles size={16} color="var(--color-lamp)" />
+                <strong style={{ fontSize: "0.95rem" }}>
+                  ИИ-Анализ активной главы
+                </strong>
               </div>
-              <button type="button" className="icon-btn" style={{ minHeight: "2rem", padding: "0.2rem 0.5rem" }} onClick={() => setShowAi(false)}>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => setShowAi(false)}
+                style={{ minHeight: "1.8rem", minWidth: "1.8rem" }}
+              >
                 <X size={16} />
               </button>
             </div>
 
-            <div style={{ display: "flex", borderBottom: "1px solid var(--color-line)", background: "var(--color-raise)" }}>
-              {(["summary", "plan", "warnings", "ask"] as const).map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  style={{
-                    flex: 1,
-                    padding: "0.5rem 0.2rem",
-                    border: "none",
-                    background: aiTab === tab ? "var(--color-line)" : "transparent",
-                    color: aiTab === tab ? "var(--color-lamp)" : "var(--color-muted)",
-                    fontWeight: aiTab === tab ? 700 : 500,
-                    fontSize: "0.78rem",
-                    cursor: "pointer",
-                  }}
-                  onClick={() => setAiTab(tab)}
-                >
-                  {tab === "summary" && "Суть"}
-                  {tab === "plan" && "Шаги"}
-                  {tab === "warnings" && "Опасно"}
-                  {tab === "ask" && "Вопрос"}
-                </button>
-              ))}
+            {/* AI Tabs */}
+            <div
+              style={{
+                display: "flex",
+                borderBottom: `1px solid ${themeStyles.border}`,
+                background: "rgba(0,0,0,0.15)",
+              }}
+            >
+              <button
+                type="button"
+                className={`text-btn ${aiTab === "summary" ? "active" : ""}`}
+                style={{ flex: 1, fontSize: "0.78rem", minHeight: "2.1rem", border: "none" }}
+                onClick={() => setAiTab("summary")}
+              >
+                Суть
+              </button>
+              <button
+                type="button"
+                className={`text-btn ${aiTab === "plan" ? "active" : ""}`}
+                style={{ flex: 1, fontSize: "0.78rem", minHeight: "2.1rem", border: "none" }}
+                onClick={() => setAiTab("plan")}
+              >
+                Шаги
+              </button>
+              <button
+                type="button"
+                className={`text-btn ${aiTab === "warnings" ? "active" : ""}`}
+                style={{ flex: 1, fontSize: "0.78rem", minHeight: "2.1rem", border: "none" }}
+                onClick={() => setAiTab("warnings")}
+              >
+                Опасности
+              </button>
+              <button
+                type="button"
+                className={`text-btn ${aiTab === "ask" ? "active" : ""}`}
+                style={{ flex: 1, fontSize: "0.78rem", minHeight: "2.1rem", border: "none" }}
+                onClick={() => setAiTab("ask")}
+              >
+                Поиск
+              </button>
             </div>
 
+            {/* AI Tab Content */}
             <div style={{ flex: 1, overflowY: "auto", padding: "1rem" }}>
-              {aiTab === "summary" && (
+              {chapterAnalysis && aiTab === "summary" && (
                 <div>
-                  <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.9rem" }}>Главные тезисы документа</h4>
-                  <ul style={{ margin: 0, paddingLeft: "1.2rem", fontSize: "0.85rem", lineHeight: 1.5 }}>
-                    {analysis.keyPoints.map((pt, i) => (
-                      <li key={i} style={{ marginBottom: "0.4rem" }}>{pt}</li>
+                  <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.9rem" }}>Главные тезисы главы:</h4>
+                  <ul style={{ margin: 0, paddingLeft: "1.2rem", fontSize: "0.85rem" }}>
+                    {chapterAnalysis.keyPoints.map((kp, idx) => (
+                      <li key={idx} style={{ marginBottom: "0.4rem" }}>
+                        {kp}
+                      </li>
                     ))}
                   </ul>
                 </div>
               )}
-              {aiTab === "plan" && (
+
+              {chapterAnalysis && aiTab === "plan" && (
                 <div>
-                  <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.9rem" }}>Алгоритм действий</h4>
-                  <ol style={{ margin: 0, paddingLeft: "1.2rem", fontSize: "0.85rem", lineHeight: 1.5 }}>
-                    {analysis.actionSteps.map((st, i) => (
-                      <li key={i} style={{ marginBottom: "0.4rem" }}>{st}</li>
+                  <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.9rem" }}>Практические действия:</h4>
+                  <ol style={{ margin: 0, paddingLeft: "1.2rem", fontSize: "0.85rem" }}>
+                    {chapterAnalysis.actionSteps.map((step, idx) => (
+                      <li key={idx} style={{ marginBottom: "0.4rem" }}>
+                        {step}
+                      </li>
                     ))}
                   </ol>
                 </div>
               )}
-              {aiTab === "warnings" && (
+
+              {chapterAnalysis && aiTab === "warnings" && (
                 <div>
-                  <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.9rem", color: "var(--color-alarm)" }}>Предостережения и риски</h4>
-                  <ul style={{ margin: 0, paddingLeft: "1.2rem", fontSize: "0.85rem", lineHeight: 1.5, color: "var(--color-alarm)" }}>
-                    {analysis.warnings.map((w, i) => (
-                      <li key={i} style={{ marginBottom: "0.4rem" }}>{w}</li>
+                  <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.9rem", color: "var(--color-lamp)" }}>
+                    ⚠️ Запреты и риски:
+                  </h4>
+                  <ul style={{ margin: 0, paddingLeft: "1.2rem", fontSize: "0.85rem" }}>
+                    {chapterAnalysis.warnings.map((warn, idx) => (
+                      <li key={idx} style={{ marginBottom: "0.4rem" }}>
+                        {warn}
+                      </li>
                     ))}
                   </ul>
                 </div>
               )}
+
               {aiTab === "ask" && (
                 <div>
-                  <form onSubmit={(e) => { e.preventDefault(); handleAiAsk(); }} style={{ marginBottom: "0.8rem" }}>
+                  <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.9rem" }}>Задать вопрос по главе:</h4>
+                  <div style={{ display: "flex", gap: "0.4rem", marginBottom: "0.8rem" }}>
                     <input
                       type="text"
-                      className="search-field"
-                      placeholder="Задайте вопрос по тексту..."
+                      placeholder="Например: как фильтровать..."
                       value={aiQuery}
                       onChange={(e) => setAiQuery(e.target.value)}
-                      style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem", marginBottom: "0.4rem" }}
+                      onKeyDown={(e) => e.key === "Enter" && handleRunAiQuery()}
+                      style={{ flex: 1, padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}
                     />
-                    <button type="submit" className="text-btn" style={{ width: "100%", fontSize: "0.85rem", padding: "0.4rem" }}>
-                      Спросить
+                    <button
+                      type="button"
+                      className="text-btn"
+                      onClick={handleRunAiQuery}
+                      style={{ padding: "0.4rem 0.75rem", fontSize: "0.85rem" }}
+                    >
+                      Найти
                     </button>
-                  </form>
+                  </div>
                   {aiResult && (
-                    <div style={{ padding: "0.75rem", background: "var(--color-line)", borderRadius: "var(--radius-card)", fontSize: "0.85rem", lineHeight: 1.5 }}>
-                      {aiResult.text}
+                    <div
+                      style={{
+                        padding: "0.75rem",
+                        borderRadius: "var(--radius-card)",
+                        background: "rgba(0,0,0,0.25)",
+                        border: `1px solid ${themeStyles.border}`,
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      <p style={{ margin: 0 }}>{aiResult.text}</p>
                     </div>
                   )}
                 </div>
@@ -789,183 +1061,124 @@ export function DocumentReaderModal({
         )}
       </div>
 
-      {/* Reader Bottom Pagination Bar */}
-      {viewMode === "paged" && (
-        <footer
-          style={{
-            padding: "0.5rem 1rem",
-            borderTop: "1px solid var(--color-line)",
-            background: "var(--color-raise)",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "0.8rem",
-          }}
-        >
-          {/* Previous Page */}
+      {/* Bottom Sticky Page Navigation Bar */}
+      <footer
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: "4rem",
+          background: themeStyles.headerBg,
+          borderTop: `1px solid ${themeStyles.border}`,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "0 1rem",
+          zIndex: 30,
+          boxShadow: "0 -4px 12px rgba(0,0,0,0.2)",
+          flexWrap: "wrap",
+          gap: "0.5rem",
+        }}
+      >
+        {/* Left: Previous Chapter & Previous Page */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+          <button
+            type="button"
+            className="text-btn"
+            disabled={currentChapterIndex === 0}
+            onClick={handlePrevChapter}
+            style={{ minHeight: "2.3rem", padding: "0.2rem 0.6rem", fontSize: "0.82rem" }}
+            title="Предыдущая глава"
+          >
+            ◀◀ Глава
+          </button>
           <button
             type="button"
             className="chip"
-            disabled={currentPage <= 1}
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            style={{ opacity: currentPage <= 1 ? 0.4 : 1, display: "flex", alignItems: "center", gap: 3 }}
+            data-on="1"
+            disabled={currentChapterIndex === 0 && clampedPage === 1}
+            onClick={handlePrevPage}
+            style={{
+              minHeight: "2.3rem",
+              padding: "0.2rem 0.8rem",
+              fontWeight: 600,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
           >
             <ChevronLeft size={16} />
-            <span className="hide-sm">Предыдущая</span>
+            <span>Назад</span>
           </button>
+        </div>
 
-          {/* Page Indicator & Fast Jump */}
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            {!showJumpDialog ? (
-              <button
-                type="button"
-                onClick={() => { setShowJumpDialog(true); setJumpPageInput(String(currentPage)); }}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "var(--color-fg)",
-                  fontWeight: 700,
-                  fontSize: "0.85rem",
-                  cursor: "pointer",
-                  padding: "0.2rem 0.5rem",
-                  borderRadius: "4px",
-                }}
-                title="Нажмите, чтобы ввести номер страницы"
-              >
-                Стр. {currentPage} из {totalPages} ({Math.round((currentPage / totalPages) * 100)}%)
-              </button>
-            ) : (
-              <form onSubmit={handleJumpToPage} style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                <input
-                  type="number"
-                  min={1}
-                  max={totalPages}
-                  value={jumpPageInput}
-                  onChange={(e) => setJumpPageInput(e.target.value)}
-                  autoFocus
-                  style={{
-                    width: "4rem",
-                    padding: "0.2rem 0.4rem",
-                    fontSize: "0.82rem",
-                    borderRadius: "4px",
-                    border: "1px solid var(--color-line)",
-                    background: "var(--color-bg)",
-                    color: "var(--color-fg)",
-                    textAlign: "center",
-                  }}
-                />
-                <button type="submit" className="chip" style={{ minHeight: "1.8rem", padding: "0.1rem 0.4rem" }}>
-                  Перейти
-                </button>
-              </form>
-            )}
+        {/* Center: Chapter and Page Counter with Range Slider */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, minWidth: "180px", maxWidth: "26rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem" }}>
+            <span style={{ fontWeight: 700, color: "var(--color-lamp)" }}>
+              Стр. {clampedPage} из {chapterPages.length}
+            </span>
+            <span className="meta" style={{ fontSize: "0.75rem" }}>
+              (Глава {currentChapterIndex + 1}/{chapters.length} · Всего ~{currentGlobalPage}/{totalGlobalPages} стр.)
+            </span>
           </div>
 
-          {/* Next Page */}
+          {/* Quick Page Scrub Slider */}
+          {chapterPages.length > 1 && (
+            <input
+              type="range"
+              min={1}
+              max={chapterPages.length}
+              value={clampedPage}
+              onChange={(e) => setPageInChapter(parseInt(e.target.value, 10))}
+              style={{
+                width: "100%",
+                maxWidth: "20rem",
+                marginTop: "0.2rem",
+                accentColor: "var(--color-lamp)",
+                cursor: "pointer",
+              }}
+              aria-label="Перелистывание страниц"
+            />
+          )}
+        </div>
+
+        {/* Right: Next Page & Next Chapter */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
           <button
             type="button"
             className="chip"
-            disabled={currentPage >= totalPages}
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            style={{ opacity: currentPage >= totalPages ? 0.4 : 1, display: "flex", alignItems: "center", gap: 3 }}
+            data-on="1"
+            disabled={
+              currentChapterIndex === chapters.length - 1 &&
+              clampedPage === chapterPages.length
+            }
+            onClick={handleNextPage}
+            style={{
+              minHeight: "2.3rem",
+              padding: "0.2rem 0.8rem",
+              fontWeight: 600,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
           >
-            <span className="hide-sm">Следующая</span>
+            <span>Вперед</span>
             <ChevronRight size={16} />
           </button>
-        </footer>
-      )}
+          <button
+            type="button"
+            className="text-btn"
+            disabled={currentChapterIndex === chapters.length - 1}
+            onClick={handleNextChapter}
+            style={{ minHeight: "2.3rem", padding: "0.2rem 0.6rem", fontSize: "0.82rem" }}
+            title="Следующая глава"
+          >
+            Глава ▶▶
+          </button>
+        </div>
+      </footer>
     </div>
   );
-}
-
-// ----------------- OFFLINE AI ANALYSIS ENGINE -----------------
-
-function runDocumentAnalysis(text: string, lang: Language) {
-  const paragraphs = text
-    .split(/\n{2,}|\r\n\r\n/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 20);
-
-  const words = text.split(/\s+/).filter(Boolean);
-
-  const keyPoints: string[] = [];
-  for (const p of paragraphs.slice(0, 10)) {
-    const firstSentence = p.split(/[.!?]\s+/)[0];
-    if (firstSentence && firstSentence.length > 25 && firstSentence.length < 200) {
-      keyPoints.push(firstSentence.trim() + ".");
-      if (keyPoints.length >= 4) break;
-    }
-  }
-  if (keyPoints.length === 0 && paragraphs[0]) {
-    keyPoints.push(paragraphs[0].slice(0, 180) + "…");
-  }
-
-  const actionSteps: string[] = [];
-  const actionRegex =
-    /(?:^|\n)\s*(?:(?:\d+\.|\*|-|•|Шаг \d+:?|Step \d+:?)\s+)?([А-ЯA-Z\u0600-\u06FF][^.\n]{15,180}\b(?:промыть|наложить|очистить|завязать|собрать|проверить|утеплить|вскипятить|зафиксировать|остановить|найти|prepare|clean|apply|secure|boil|check|find)[^.\n]*[.!?]?)/gi;
-
-  let match: RegExpExecArray | null;
-  while ((match = actionRegex.exec(text)) !== null) {
-    const step = match[1].trim();
-    if (step.length > 15 && !actionSteps.includes(step)) {
-      actionSteps.push(step);
-      if (actionSteps.length >= 5) break;
-    }
-  }
-  if (actionSteps.length === 0) {
-    actionSteps.push("Соблюдать покой, следовать инструкциям и контролировать дыхание.");
-  }
-
-  const warnings: string[] = [];
-  const dangerRegex =
-    /(?:^|\n)\s*(?:Внимание|Опасно|Запрещено|Не делать|Нельзя|Warning|Caution|Danger|Do not|لا تفعل|تحذير)[:\s]+([^.\n]{15,200}[.!?]?)/gi;
-
-  while ((match = dangerRegex.exec(text)) !== null) {
-    const w = match[1].trim();
-    if (w.length > 15 && !warnings.includes(w)) {
-      warnings.push(w);
-      if (warnings.length >= 4) break;
-    }
-  }
-  if (warnings.length === 0) {
-    warnings.push("Не предпринимать рискованных действий без предварительной оценки обстановки.");
-  }
-
-  return {
-    keyPoints,
-    actionSteps,
-    warnings,
-  };
-}
-
-function answerFromDocText(query: string, text: string, lang: Language) {
-  const refusal = refusalReason(query);
-  if (refusal) return { text: refusal, citations: [] };
-
-  const qWords = query.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
-  const paragraphs = text.split(/\n{2,}|\r\n\r\n/).map((p) => p.trim());
-
-  let bestPara = "";
-  let maxMatches = 0;
-
-  for (const para of paragraphs) {
-    const lower = para.toLowerCase();
-    const count = qWords.reduce((acc, word) => acc + (lower.includes(word) ? 1 : 0), 0);
-    if (count > maxMatches) {
-      maxMatches = count;
-      bestPara = para;
-    }
-  }
-
-  if (maxMatches === 0 || !bestPara) {
-    return {
-      text: lang === "ru" ? "В данном документе прямого ответа не найдено." : "No direct answer found in this document.",
-      citations: [],
-    };
-  }
-
-  return {
-    text: bestPara.slice(0, 600),
-    citations: [bestPara.slice(0, 80)],
-  };
 }

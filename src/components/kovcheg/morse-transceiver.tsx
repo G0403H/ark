@@ -17,6 +17,11 @@ import type { MorseLanguage } from "@/lib/kovcheg/morse/types";
 import { textToMorse, morseToText } from "@/lib/kovcheg/morse/alphabet";
 import { generateTimings } from "@/lib/kovcheg/morse/encoder";
 import { OpticalPulseDecoder } from "@/lib/kovcheg/morse/decoder";
+import {
+  initHardwareTorch,
+  setHardwareTorch,
+  releaseHardwareTorch,
+} from "@/lib/kovcheg/hardware-torch";
 
 export function MorseTransceiver() {
   const [lang, setLang] = useState<MorseLanguage>("ru");
@@ -93,18 +98,23 @@ export function MorseTransceiver() {
     }
   }
 
-  // Flashlight Torch Toggle
+  // Flashlight Torch Toggle (supports Native Android APK & Web ImageCapture)
   async function setTorchState(on: boolean) {
-    if (!videoTrackRef.current) return;
-    try {
-      const capabilities = (videoTrackRef.current as any).getCapabilities?.();
-      if (capabilities?.torch) {
-        await (videoTrackRef.current as any).applyConstraints({
-          advanced: [{ torch: on }],
-        });
-      }
-    } catch {}
+    if (!useTorch) return;
+    await setHardwareTorch(on);
   }
+
+  // Pre-warm hardware torch when enabled
+  useEffect(() => {
+    if (useTorch) {
+      initHardwareTorch();
+    } else {
+      releaseHardwareTorch();
+    }
+    return () => {
+      releaseHardwareTorch();
+    };
+  }, [useTorch]);
 
   // Transmit Sequence
   async function startTransmission(customText?: string) {
@@ -115,16 +125,8 @@ export function MorseTransceiver() {
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
 
-    // Optional: get torch camera track if needed
-    let tempStream: MediaStream | null = null;
-    if (useTorch && typeof navigator !== "undefined" && navigator.mediaDevices) {
-      try {
-        tempStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-        });
-        const track = tempStream.getVideoTracks()[0];
-        videoTrackRef.current = track;
-      } catch {}
+    if (useTorch) {
+      await initHardwareTorch();
     }
 
     const sequence = generateTimings(textToSend, lang, unitMs);
@@ -150,6 +152,7 @@ export function MorseTransceiver() {
           stopAudio?.();
         } else {
           setKeyActive(false);
+          if (useTorch) setTorchState(false);
           await new Promise((r) => setTimeout(r, step.durationMs));
         }
       }
@@ -159,10 +162,6 @@ export function MorseTransceiver() {
       setCurrentTxSymbol("");
       setScreenFlashActive(false);
       setTorchState(false);
-      if (tempStream) {
-        tempStream.getTracks().forEach((t) => t.stop());
-        videoTrackRef.current = null;
-      }
     }
   }
 
@@ -323,11 +322,17 @@ export function MorseTransceiver() {
     setKeyActive(true);
     keyPressStart.current = Date.now();
     stopKeyAudio.current = playTone();
+    if (useTorch) {
+      setHardwareTorch(true);
+    }
   }
 
   function handleKeyUp() {
     setKeyActive(false);
     stopKeyAudio.current?.();
+    if (useTorch) {
+      setHardwareTorch(false);
+    }
     const duration = Date.now() - keyPressStart.current;
     const isDash = duration > 160;
     const symbol = isDash ? "-" : ".";

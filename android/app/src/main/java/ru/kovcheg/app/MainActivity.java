@@ -18,12 +18,16 @@ import android.view.KeyEvent;
 import android.webkit.ConsoleMessage;
 import android.webkit.GeolocationPermissions;
 import android.webkit.WebChromeClient;
+import android.webkit.PermissionRequest;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
+import android.hardware.camera2.CameraManager;
+import android.hardware.camera2.CameraCharacteristics;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -176,7 +180,17 @@ public class MainActivity extends AppCompatActivity {
                     );
                 }
             }
+
+            @Override
+            public void onPermissionRequest(PermissionRequest request) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    request.grant(request.getResources());
+                }
+            }
         });
+
+        // Register Native Hardware Flashlight/Torch bridge for instant, zero-latency Morse pulses
+        webView.addJavascriptInterface(new NativeTorchBridge(), "KovchegNative");
 
         initHardwareSosReceiver();
 
@@ -323,5 +337,52 @@ public class MainActivity extends AppCompatActivity {
             webView.destroy();
         }
         super.onDestroy();
+    }
+
+    /**
+     * Native Hardware Flashlight Torch Bridge
+     * Gives Web JavaScript instant access to CameraManager.setTorchMode
+     * without needing to start a camera preview stream or wait for getUserMedia
+     */
+    public class NativeTorchBridge {
+        @JavascriptInterface
+        public boolean setTorch(boolean on) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    CameraManager cameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+                    if (cameraManager != null) {
+                        for (String id : cameraManager.getCameraIdList()) {
+                            CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(id);
+                            Boolean hasFlash = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                            Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
+                            if (hasFlash != null && hasFlash && facing != null && facing == CameraCharacteristics.LENS_FACING_BACK) {
+                                cameraManager.setTorchMode(id, on);
+                                return true;
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Native torch toggle failed: " + e.getMessage());
+                }
+            }
+            return false;
+        }
+
+        @JavascriptInterface
+        public boolean isTorchAvailable() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    CameraManager cameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+                    if (cameraManager != null) {
+                        for (String id : cameraManager.getCameraIdList()) {
+                            CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(id);
+                            Boolean hasFlash = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                            if (hasFlash != null && hasFlash) return true;
+                        }
+                    }
+                } catch (Exception e) {}
+            }
+            return false;
+        }
     }
 }

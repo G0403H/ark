@@ -6,6 +6,7 @@ import { refusalReason, searchArticles } from "@/lib/kovcheg/search";
 import { getLocalizedShelves, shelfTitle, type ShelfId } from "@/lib/kovcheg/shelves";
 import { useArk } from "@/lib/kovcheg/store";
 import { t } from "@/lib/kovcheg/i18n";
+import { CustomSelect } from "@/components/kovcheg/custom-select";
 
 export const Route = createFileRoute("/")({ component: SearchHome });
 
@@ -24,6 +25,24 @@ function SearchHome() {
 
   const localizedShelves = useMemo(() => getLocalizedShelves(lang), [lang]);
   const alarmItems = useMemo(() => getAlarmOrder(lang), [lang]);
+
+  const shelfOptions = useMemo(
+    () => [
+      { value: "" as ShelfId | "", label: t("allShelves", lang) },
+      ...localizedShelves.map((s) => ({ value: s.id, label: s.title })),
+    ],
+    [localizedShelves, lang],
+  );
+
+  const packOptions = useMemo(
+    () => [
+      { value: "", label: t("allPacks", lang) },
+      { value: "kovcheg-base", label: t("packBase", lang) },
+      { value: "user-notes", label: t("packUserNotes", lang) },
+      { value: "user-cards", label: t("packUserCards", lang) },
+    ],
+    [lang],
+  );
 
   const refusal = refusalReason(q);
   const filtered = Boolean(shelf || pictures || alarms || packId || allLanguages);
@@ -61,19 +80,12 @@ function SearchHome() {
         onChange={(e) => setQ(e.target.value)}
       />
       <div className="filters">
-        <select
-          className="select"
-          aria-label={t("allShelves", lang)}
+        <CustomSelect
+          ariaLabel={t("allShelves", lang)}
           value={shelf}
-          onChange={(e) => setShelf(e.target.value as ShelfId | "")}
-        >
-          <option value="">{t("allShelves", lang)}</option>
-          {localizedShelves.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.title}
-            </option>
-          ))}
-        </select>
+          onChange={(val) => setShelf(val)}
+          options={shelfOptions}
+        />
         <button type="button" className="chip" data-on={pictures ? "1" : "0"} onClick={() => setPictures((v) => !v)}>
           {t("picturesOnly", lang)}
         </button>
@@ -89,12 +101,12 @@ function SearchHome() {
         >
           {allLanguages ? t("allLanguagesFilter", lang) : lang.toUpperCase()}
         </button>
-        <select className="select" aria-label={t("packLabel", lang)} value={packId} onChange={(e) => setPackId(e.target.value)}>
-          <option value="">{t("allPacks", lang)}</option>
-          <option value="kovcheg-base">{t("packBase", lang)}</option>
-          <option value="user-notes">{t("packUserNotes", lang)}</option>
-          <option value="user-cards">{t("packUserCards", lang)}</option>
-        </select>
+        <CustomSelect
+          ariaLabel={t("packLabel", lang)}
+          value={packId}
+          onChange={(val) => setPackId(val)}
+          options={packOptions}
+        />
       </div>
 
       {!q.trim() && !filtered && (

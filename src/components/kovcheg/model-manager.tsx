@@ -20,6 +20,7 @@ import {
 import { buildKnowledgeIndex } from "@/lib/kovcheg/models/knowledge-indexer";
 import { useCorpus } from "@/lib/kovcheg/library";
 import { useArk } from "@/lib/kovcheg/store";
+import { useBackgroundDownloader } from "@/lib/kovcheg/models/background-downloader";
 import { t } from "@/lib/kovcheg/i18n";
 
 export function ModelManager() {
@@ -38,9 +39,9 @@ export function ModelManager() {
   const setArchiveIndexed = useArk((s) => s.setArchiveIndexed);
 
   const [hardwareProfile, setHardwareProfile] = useState<DeviceHardwareProfile | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<
-    Record<string, ModelDownloadProgress>
-  >({});
+  const downloads = useBackgroundDownloader((s) => s.downloads);
+  const startBackgroundDownload = useBackgroundDownloader((s) => s.startDownload);
+  const clearDownloadStatus = useBackgroundDownloader((s) => s.clearDownloadStatus);
   const [indexing, setIndexing] = useState(false);
   const [indexSuccess, setIndexSuccess] = useState(false);
 
@@ -118,35 +119,12 @@ export function ModelManager() {
   }
 
   async function handleDownloadModel(modelId: LocalModelId) {
-    setDownloadProgress((prev) => ({
-      ...prev,
-      [modelId]: { status: "downloading", progress: 0, text: "Подготовка..." },
-    }));
-
-    const ok = await loadWebLLMModel(
-      modelId,
-      (progress) => {
-        setDownloadProgress((prev) => ({
-          ...prev,
-          [modelId]: progress,
-        }));
-      },
-      customModels
-    );
-
-    if (ok) {
-      addDownloadedModel(modelId);
-      setSelectedModelId(modelId);
-    }
+    await startBackgroundDownload(modelId, customModels);
   }
 
   function handleDeleteModel(modelId: LocalModelId) {
     removeDownloadedModel(modelId);
-    setDownloadProgress((prev) => {
-      const copy = { ...prev };
-      delete copy[modelId];
-      return copy;
-    });
+    clearDownloadStatus(modelId);
   }
 
   function handleAddCustomModelSubmit(e: React.FormEvent) {
@@ -582,7 +560,7 @@ export function ModelManager() {
         {allModels.map((m) => {
           const isDownloaded = downloadedModels.includes(m.id);
           const isSelected = selectedModelId === m.id;
-          const progress = downloadProgress[m.id];
+          const progress = downloads[m.id];
           const isDownloading = progress?.status === "downloading";
 
           const compat = hardwareProfile
@@ -700,9 +678,14 @@ export function ModelManager() {
                       }}
                     />
                   </div>
-                  <span className="meta" style={{ fontSize: "0.8rem", display: "block", marginTop: "0.2rem" }}>
-                    {progress.text} ({progress.progress}%)
-                  </span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "0.25rem" }}>
+                    <span className="meta" style={{ fontSize: "0.8rem" }}>
+                      {progress.text} ({progress.progress}%)
+                    </span>
+                    <span style={{ fontSize: "0.75rem", color: "var(--color-lamp)", fontWeight: 600 }}>
+                      ⚡ {lang === "ar" ? "في الخلفية" : lang === "en" ? "In background" : "Фоновый режим"}
+                    </span>
+                  </div>
                 </div>
               )}
 

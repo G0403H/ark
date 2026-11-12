@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Radio, Volume2, VolumeX, Lightbulb, Play, Square, AlertCircle, Compass } from "lucide-react";
 import { TacticalSecurityGate } from "@/components/kovcheg/tactical-security-gate";
+import { initHardwareTorch, setHardwareTorch, releaseHardwareTorch } from "@/lib/kovcheg/hardware-torch";
 
 // International Morse Dictionary (RU + EN + Digits)
 const MORSE_MAP: Record<string, string> = {

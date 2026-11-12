@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Radiation, Menu, Globe } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Radiation, Menu, Globe, Shield, Sun } from "lucide-react";
 import { useEffect } from "react";
 import { LANGUAGES, t } from "@/lib/kovcheg/i18n";
 import { useArk } from "@/lib/kovcheg/store";
@@ -8,6 +9,7 @@ import { NavigationDrawer } from "@/components/kovcheg/navigation-drawer";
 import { ButtonBar } from "@/components/kovcheg/button-bar";
 import { AppLockScreen } from "@/components/kovcheg/app-lock-screen";
 import { useHardwareSosDetector } from "@/lib/kovcheg/hardware-sos-detector";
+import { useBackgroundDownloader } from "@/lib/kovcheg/models/background-downloader";
 
 export function Frame({ children }: { children: ReactNode }) {
   // Listen for emergency physical 3x Power button SOS triggers
@@ -18,6 +20,11 @@ export function Frame({ children }: { children: ReactNode }) {
   const lang = useArk((s) => s.lang) ?? "ru";
   const setLang = useArk((s) => s.setLang);
   const toggleDrawer = useArk((s) => s.toggleDrawer);
+
+  // Background downloader state
+  const activeModelId = useBackgroundDownloader((s) => s.activeModelId);
+  const downloads = useBackgroundDownloader((s) => s.downloads);
+  const activeDownload = activeModelId ? downloads[activeModelId] : null;
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -102,13 +109,43 @@ export function Frame({ children }: { children: ReactNode }) {
                   <span className="theme-toggle-label">{t("themeStalker", lang)}</span>
                 </>
               ) : theme === "shelter" ? (
-                <span className="theme-toggle-label">{t("themeShelter", lang)}</span>
+                <>
+                  <Shield size={15} className="theme-toggle-icon" />
+                  <span className="theme-toggle-label">{t("themeShelter", lang)}</span>
+                </>
               ) : (
-                <span className="theme-toggle-label">{t("themePaper", lang)}</span>
+                <>
+                  <Sun size={15} className="theme-toggle-icon" />
+                  <span className="theme-toggle-label">{t("themePaper", lang)}</span>
+                </>
               )}
             </button>
           </div>
         </header>
+
+        {/* Global Background Model Download Banner */}
+        {activeDownload && activeDownload.status === "downloading" && (
+          <Link
+            to="/assistant"
+            className="bg-model-banner"
+            title={lang === "ar" ? "اضغط لفتح المساعد" : lang === "en" ? "Click to view Assistant" : "Нажмите, чтобы открыть ассистент"}
+          >
+            <div className="bg-model-content">
+              <span className="bg-model-icon">⚡</span>
+              <span className="bg-model-title">
+                {lang === "ar" ? "تنزيل النموذج في الخلفية:" : lang === "en" ? "Background model downloading:" : "Фоновая загрузка модели:"}{" "}
+                <strong>{activeDownload.progress || 0}%</strong>
+              </span>
+              <span className="bg-model-detail">{activeDownload.text}</span>
+            </div>
+            <div className="bg-model-progress-bar">
+              <div
+                className="bg-model-progress-fill"
+                style={{ width: `${Math.max(3, activeDownload.progress || 0)}%` }}
+              />
+            </div>
+          </Link>
+        )}
 
         {theme === "stalker" && <StalkerHud />}
 

@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useRef } from "react";
+import { Send, Square, Trash2, Sparkles, Cpu } from "lucide-react";
 import { answerFromArchive } from "@/lib/kovcheg/answer";
 import { useCorpus } from "@/lib/kovcheg/library";
 import { useArk } from "@/lib/kovcheg/store";
@@ -11,7 +12,6 @@ import {
 } from "@/lib/kovcheg/models/knowledge-indexer";
 import { generateRAGAnswer } from "@/lib/kovcheg/models/llm-engine";
 import type { KnowledgeChunk } from "@/lib/kovcheg/models/types";
-
 import { t } from "@/lib/kovcheg/i18n";
 
 export const Route = createFileRoute("/assistant")({ component: AssistantPage });
@@ -34,7 +34,9 @@ function AssistantPage() {
   const archiveIndexedChunks = useArk((s) => s.archiveIndexedChunks);
   const addNote = useArk((s) => s.addNote);
 
-  const [q, setQ] = useState("");
+  // User input and submitted query
+  const [inputText, setInputText] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
   const [saved, setSaved] = useState(false);
   const [showModelManager, setShowModelManager] = useState(false);
 
@@ -48,40 +50,43 @@ function AssistantPage() {
   const selectedModel = useMemo(() => getModelInfo(selectedModelId, customModels), [selectedModelId, customModels]);
   const isModelReady = downloadedModels.includes(selectedModelId);
 
-  // Fast archive answer for "archive-only" mode
+  // Fast archive answer for "archive-only" mode based on submitted query
   const archiveAnswer = useMemo(
-    () => answerFromArchive(q, articles, boost, index),
-    [q, articles, boost, index],
+    () => answerFromArchive(submittedQuery, articles, boost, index),
+    [submittedQuery, articles, boost, index],
   );
 
-  // Trigger LLM generation when in LLM mode and query changes
-  useEffect(() => {
-    if (modelMode !== "llm" || !q.trim()) {
+  // Send message handler (triggered by clicking "Send" or pressing Enter)
+  async function handleSendMessage(queryOverride?: string) {
+    const textToSend = (queryOverride !== undefined ? queryOverride : inputText).trim();
+    if (!textToSend) return;
+
+    // Abort previous generation if active
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
+    setSubmittedQuery(textToSend);
+    setSaved(false);
+
+    if (modelMode === "llm") {
+      setIsGenerating(true);
       setLlmAnswerText("");
       setCitedChunks([]);
       setGenerationTimeMs(null);
-      return;
-    }
 
-    // Abort previous generation if user is typing
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
-
-    const timer = setTimeout(async () => {
-      setIsGenerating(true);
-      setLlmAnswerText("");
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
 
       try {
         const knowledgeIndex = buildKnowledgeIndex(articles);
-        const hits = searchKnowledgeIndex(knowledgeIndex, q, 4);
+        const hits = searchKnowledgeIndex(knowledgeIndex, textToSend, 4);
         const retrievedChunks = hits.map((h) => h.chunk);
         setCitedChunks(retrievedChunks);
 
         const result = await generateRAGAnswer(
-          q,
+          textToSend,
           retrievedChunks,
           selectedModelId,
           {
@@ -97,25 +102,40 @@ function AssistantPage() {
           setLlmAnswerText(result.text);
           setGenerationTimeMs(result.inferenceTimeMs);
         }
-      } catch (err) {
+      } catch (err: any) {
         if (!abortController.signal.aborted) {
           console.error("RAG Generation error:", err);
+          setLlmAnswerText(
+            lang === "ar"
+              ? "حدث خطأ أثناء معالجة السؤال. يرجى المحاولة مرة أخرى."
+              : lang === "en"
+              ? "Error during generation. Please try again."
+              : "Произошла ошибка при ответе. Попробуйте отправить запрос еще раз."
+          );
         }
       } finally {
         if (!abortController.signal.aborted) {
           setIsGenerating(false);
         }
       }
-    }, 350);
+    }
+  }
 
-    return () => {
-      clearTimeout(timer);
-      abortController.abort();
-    };
-  }, [q, modelMode, selectedModelId, articles, customModels]);
+  // Stop current generation
+  function handleStopGeneration() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsGenerating(false);
+  }
+
+  function handleClearInput() {
+    setInputText("");
+  }
 
   function saveCard() {
-    if (!q.trim()) return;
+    if (!submittedQuery.trim()) return;
     const body =
       modelMode === "llm" && llmAnswerText
         ? llmAnswerText
@@ -125,7 +145,7 @@ function AssistantPage() {
 
     addNote({
       id: crypto.randomUUID(),
-      title: q.trim().slice(0, 80),
+      title: submittedQuery.trim().slice(0, 80),
       body,
       created: Date.now(),
       pack: "user-cards",
@@ -135,7 +155,7 @@ function AssistantPage() {
 
   return (
     <main>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>
         <h1 className="screen-title" style={{ margin: 0 }}>{t("assistantTitle", lang)}</h1>
         <button
           type="button"
@@ -199,14 +219,15 @@ function AssistantPage() {
             alignItems: "center",
             flexWrap: "wrap",
             gap: "0.5rem",
+            marginBottom: "0.8rem",
           }}
         >
           <span>
             {lang === "ar"
-              ? `النموذج «${selectedModel?.name}» غير محمل في الذاكرة. سيتم الرد بناءً على القواعد المباشرة للأرشيف.`
+              ? `النموذج «${selectedModel?.name}» غير محمل في الذاكرة. يمكنك تنزيل веса в фоне.`
               : lang === "en"
-              ? `Model "${selectedModel?.name}" is not downloaded. The response will be grounded on direct archive rules.`
-              : `Модель «${selectedModel?.name}» не загружена в память. Ответ будет сгенерирован встроенным правилом или вы можете скачать веса.`}
+              ? `Model "${selectedModel?.name}" is not downloaded yet. You can download it in the background.`
+              : `Модель «${selectedModel?.name}» не загружена в память. Вы можете запустить её скачивание в фоне.`}
           </span>
           <button
             type="button"
@@ -229,36 +250,128 @@ function AssistantPage() {
         </p>
       )}
 
-      <label className="quiet" htmlFor="ask">
-        {t("questionLabel", lang)}
-      </label>
-      <textarea
-        id="ask"
-        className="ask-field"
-        rows={3}
-        value={q}
-        placeholder={t("askPlaceholder", lang)}
-        onChange={(e) => {
-          setQ(e.target.value);
-          setSaved(false);
+      {/* Interactive Message Input Box with SEND button */}
+      <form
+        className="assistant-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!isGenerating) {
+            handleSendMessage();
+          }
         }}
-      />
+      >
+        <label className="quiet" htmlFor="ask-input">
+          {t("questionLabel", lang)}
+        </label>
 
-      {!q.trim() && (
-        <div className="tools">
-          {(EXAMPLES_MAP[lang] ?? EXAMPLES_MAP.ru).map((ex) => (
-            <button key={ex} type="button" className="chip" onClick={() => setQ(ex)}>
-              {ex}
-            </button>
-          ))}
+        <div className="ask-box-wrapper">
+          <textarea
+            id="ask-input"
+            className="ask-box-textarea"
+            rows={3}
+            value={inputText}
+            placeholder={t("askPlaceholder", lang)}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (!isGenerating && inputText.trim()) {
+                  handleSendMessage();
+                }
+              }
+            }}
+          />
+
+          <div className="ask-box-bottom">
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              {inputText && (
+                <button
+                  type="button"
+                  className="text-btn"
+                  onClick={handleClearInput}
+                  title={t("clearInput", lang)}
+                  style={{ fontSize: "0.8rem", padding: "0.2rem 0.5rem", minHeight: "2rem" }}
+                >
+                  <Trash2 size={13} style={{ marginRight: "0.25rem" }} />
+                  {t("clearInput", lang)}
+                </button>
+              )}
+              <span className="meta" style={{ fontSize: "0.76rem" }}>
+                {t("enterToSendHint", lang)}
+              </span>
+            </div>
+
+            {isGenerating ? (
+              <button
+                type="button"
+                className="stop-btn-primary"
+                onClick={handleStopGeneration}
+                title={t("stopGenerating", lang)}
+              >
+                <Square size={16} fill="currentColor" />
+                <span>{t("stopGenerating", lang)}</span>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="send-btn-primary"
+                disabled={!inputText.trim()}
+                title={t("sendMessage", lang)}
+              >
+                <Send size={16} />
+                <span>{t("sendMessage", lang)}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </form>
+
+      {/* Suggested Quick Questions */}
+      {!submittedQuery && (
+        <div style={{ marginBottom: "1.2rem" }}>
+          <span className="quiet" style={{ display: "block", marginBottom: "0.4rem", fontSize: "0.82rem" }}>
+            {lang === "ar" ? "أمثلة سريعة للأسئلة:" : lang === "en" ? "Suggested questions:" : "Примеры быстрых вопросов:"}
+          </span>
+          <div className="tools">
+            {(EXAMPLES_MAP[lang] ?? EXAMPLES_MAP.ru).map((ex) => (
+              <button
+                key={ex}
+                type="button"
+                className="chip"
+                onClick={() => {
+                  setInputText(ex);
+                  handleSendMessage(ex);
+                }}
+              >
+                <Sparkles size={12} style={{ marginRight: "0.3rem", opacity: 0.8 }} />
+                {ex}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
       {/* Render Answer: LLM Mode */}
-      {q.trim() && modelMode === "llm" && (
+      {submittedQuery.trim() && modelMode === "llm" && (
         <section style={{ marginTop: "1rem" }}>
+          <div
+            style={{
+              padding: "0.5rem 0.75rem",
+              background: "var(--color-bg)",
+              border: "1px solid var(--color-line)",
+              borderRadius: "var(--radius-card)",
+              marginBottom: "0.8rem",
+            }}
+          >
+            <span className="quiet" style={{ fontSize: "0.78rem" }}>
+              {lang === "ar" ? "السؤال المطروح:" : lang === "en" ? "Query:" : "Запрос:"}
+            </span>
+            <p style={{ margin: "0.15rem 0 0", fontWeight: 600 }}>{submittedQuery}</p>
+          </div>
+
           {isGenerating && !llmAnswerText && (
-            <p className="lead" style={{ opacity: 0.7 }}>
+            <p className="lead" style={{ opacity: 0.85, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <Cpu size={18} className="spin" style={{ color: "var(--color-lamp)" }} />
               {lang === "ar"
                 ? "الذكاء الاصطناعي يبحث في الأرشيف ويصيغ الرد..."
                 : lang === "en"
@@ -277,7 +390,7 @@ function AssistantPage() {
                 fontSize: "1.05rem",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem", flexWrap: "wrap", gap: "0.3rem" }}>
                 <span className="meta" style={{ fontSize: "0.8rem", color: "var(--color-lamp)" }}>
                   ● {lang === "ar" ? `رد النموذج المحلي ${selectedModel?.name}` : lang === "en" ? `Response from local ${selectedModel?.name}` : `Ответ локальной модели ${selectedModel?.name}`} {generationTimeMs ? `(${generationTimeMs} ${lang === "ru" ? "мс" : "ms"})` : ""}
                 </span>
@@ -324,8 +437,23 @@ function AssistantPage() {
       )}
 
       {/* Render Answer: Archive-Only Mode */}
-      {q.trim() && modelMode === "archive" && (
+      {submittedQuery.trim() && modelMode === "archive" && (
         <section style={{ marginTop: "1rem" }}>
+          <div
+            style={{
+              padding: "0.5rem 0.75rem",
+              background: "var(--color-bg)",
+              border: "1px solid var(--color-line)",
+              borderRadius: "var(--radius-card)",
+              marginBottom: "0.8rem",
+            }}
+          >
+            <span className="quiet" style={{ fontSize: "0.78rem" }}>
+              {lang === "ar" ? "السؤال المطروح:" : lang === "en" ? "Query:" : "Запрос:"}
+            </span>
+            <p style={{ margin: "0.15rem 0 0", fontWeight: 600 }}>{submittedQuery}</p>
+          </div>
+
           <p className={archiveAnswer.refusal || archiveAnswer.iodine ? "warn" : "lead"}>
             {archiveAnswer.intro}
           </p>
@@ -357,7 +485,7 @@ function AssistantPage() {
             <div className="tools">
               <button type="button" className="text-btn" onClick={saveCard}>
                 {saved
-                  ? (lang === "ar" ? "تم الحفظ في البطاقات" : lang === "en" ? "Saved to cards" : "Сохранено в свои карточки")
+                  ? (lang === "ar" ? "تم الحفظ в البطاقات" : lang === "en" ? "Saved to cards" : "Сохранено в свои карточки")
                   : (lang === "ar" ? "حفظ كبطاقة" : lang === "en" ? "Save as card" : "Сохранить как карточку")}
               </button>
             </div>
