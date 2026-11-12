@@ -9,6 +9,10 @@ dist/
 .vercel/
 .tanstack/
 build/
+android/.gradle/
+android/app/build/
+android/app/src/main/assets/web/
+local.properties
 
 # Local Environment Variables
 .env
