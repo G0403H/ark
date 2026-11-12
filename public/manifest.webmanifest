@@ -1,0 +1,17 @@
+{
+  "name": "КОВЧЕГ",
+  "short_name": "КОВЧЕГ",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#14120E",
+  "theme_color": "#14120E",
+  "icons": [
+    {
+      "src": "/icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

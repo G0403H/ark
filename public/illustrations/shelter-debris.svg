@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="100%" height="100%">
+  <rect width="600" height="400" fill="#18181b" />
+  <text x="30" y="40" fill="#facc15" font-size="20" font-family="sans-serif" font-weight="bold">Шалаш-укрытие из веток и лапника (Debris Hut)</text>
+  <line x1="40" y1="340" x2="560" y2="340" stroke="#71717a" stroke-width="3" />
+  <!-- Ridge pole -->
+  <line x1="160" y1="130" x2="500" y2="340" stroke="#ca8a04" stroke-width="12" stroke-linecap="round" />
+  <!-- A-frame supports -->
+  <line x1="90" y1="340" x2="160" y2="130" stroke="#a16207" stroke-width="8" stroke-linecap="round" />
+  <line x1="230" y1="340" x2="160" y2="130" stroke="#a16207" stroke-width="8" stroke-linecap="round" />
+  <!-- Ribs / rib poles -->
+  <line x1="200" y1="340" x2="220" y2="170" stroke="#854d0e" stroke-width="4" />
+  <line x1="250" y1="340" x2="280" y2="210" stroke="#854d0e" stroke-width="4" />
+  <line x1="300" y1="340" x2="340" y2="240" stroke="#854d0e" stroke-width="4" />
+  <line x1="350" y1="340" x2="400" y2="280" stroke="#854d0e" stroke-width="4" />
+  <line x1="400" y1="340" x2="450" y2="310" stroke="#854d0e" stroke-width="4" />
+  <!-- Debris foliage layer -->
+  <path d="M140,110 Q280,180 520,335 L500,345 Q260,200 120,130 Z" fill="#15803d" opacity="0.75" />
+  <path d="M130,120 Q270,210 490,340 L470,350 Q250,230 110,140 Z" fill="#166534" opacity="0.85" />
+  <circle cx="160" cy="130" r="8" fill="#eab308" />
+  <!-- Labels -->
+  <text x="175" y="125" fill="#facc15" font-size="14" font-family="sans-serif">Опорная развилка A-образной формы</text>
+  <text x="320" y="180" fill="#86efac" font-size="14" font-family="sans-serif">Слой сухой листвы и лапника: не менее 60-80 см</text>
+  <text x="60" y="370" fill="#a1a1aa" font-size="13" font-family="sans-serif">Внутренний объем должен быть минимальным — только под размер тела для сохранения тепла</text>
+</svg>

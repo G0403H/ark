@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="100%" height="100%">
+  <rect width="600" height="400" fill="#18181b" />
+  <text x="30" y="40" fill="#facc15" font-size="20" font-family="sans-serif" font-weight="bold">Дакотский подземный очаг (Dakota Fire Hole)</text>
+  <!-- Ground level -->
+  <path d="M30,140 H160 V280 C160,310 180,320 230,320 H270 C320,320 340,310 340,280 V140 H420 L480,270 C490,290 500,290 500,290 L340,290 M500,290" fill="#27272a" stroke="#71717a" stroke-width="2" />
+  <!-- Air tunnel connecting shaft -->
+  <path d="M440,140 L340,280 H300 L400,140 Z" fill="#18181b" stroke="#ca8a04" stroke-width="1.5" />
+  <!-- Fire chamber -->
+  <rect x="180" y="140" width="140" height="160" rx="10" fill="#18181b" />
+  <!-- Flames -->
+  <polygon points="220,290 240,240 260,285 275,220 290,290" fill="#ea580c" />
+  <polygon points="230,290 245,250 260,285 270,240 280,290" fill="#facc15" />
+  <!-- Airflow arrows -->
+  <path d="M420,130 L360,250" stroke="#38bdf8" stroke-width="3" stroke-dasharray="5 5" fill="none" marker-end="url(#arrow)" />
+  <path d="M330,275 L280,285" stroke="#38bdf8" stroke-width="3" stroke-dasharray="5 5" fill="none" />
+  <!-- Labels -->
+  <text x="185" y="125" fill="#facc15" font-size="14" font-family="sans-serif">Основная камера горения</text>
+  <text x="400" y="125" fill="#38bdf8" font-size="14" font-family="sans-serif">Приточный туннель под углом 45°</text>
+  <text x="130" y="360" fill="#a1a1aa" font-size="13" font-family="sans-serif">Преимущества: полное отсутствие открытого пламени, минимум дыма, защита от штормового ветра</text>
+</svg>

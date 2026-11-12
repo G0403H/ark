@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "КОВЧЕГ",
+      "hasCanvas": false,
+      "bodyTextLen": 560,
+      "bodyTextHash": "4f727749116f371e4900daf954932501917ee2bf85ca98e9191f9e7b4e221f84",
+      "bodyTextPrefix": "КОВЧЕГ Архив на устройстве. Сеть не нужна. Бумага Поиск по архив",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "КОВЧЕГ",
+      "hasCanvas": false,
+      "bodyTextLen": 560,
+      "bodyTextHash": "4f727749116f371e4900daf954932501917ee2bf85ca98e9191f9e7b4e221f84",
+      "bodyTextPrefix": "КОВЧЕГ Архив на устройстве. Сеть не нужна. Бумага Поиск по архив",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}

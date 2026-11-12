@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="100%" height="100%">
+  <rect width="600" height="400" fill="#18181b" />
+  <text x="30" y="40" fill="#facc15" font-size="20" font-family="sans-serif" font-weight="bold">Слои половинного ослабления гамма-излучения (HVL)</text>
+  <!-- Radiation source rays -->
+  <line x1="50" y1="200" x2="160" y2="200" stroke="#ef4444" stroke-width="8" />
+  <polygon points="150,192 170,200 150,208" fill="#ef4444" />
+  <text x="50" y="175" fill="#ef4444" font-size="14" font-weight="bold">Гамма-лучи 100%</text>
+  <!-- Material 1: Lead -->
+  <rect x="180" y="80" width="40" height="240" fill="#475569" stroke="#94a3b8" stroke-width="2" />
+  <text x="175" y="345" fill="#94a3b8" font-size="13" font-family="sans-serif">Свинец: 1.8 см</text>
+  <!-- Ray after lead -->
+  <line x1="220" y1="200" x2="280" y2="200" stroke="#f59e0b" stroke-width="5" />
+  <!-- Material 2: Steel -->
+  <rect x="280" y="80" width="60" height="240" fill="#64748b" stroke="#cbd5e1" stroke-width="2" />
+  <text x="280" y="345" fill="#cbd5e1" font-size="13" font-family="sans-serif">Сталь: 2.8 см</text>
+  <!-- Material 3: Concrete -->
+  <rect x="370" y="80" width="90" height="240" fill="#71717a" stroke="#d4d4d8" stroke-width="2" />
+  <text x="370" y="345" fill="#d4d4d8" font-size="13" font-family="sans-serif">Бетон: 6.0 см</text>
+  <!-- Material 4: Compacted Soil -->
+  <rect x="480" y="80" width="100" height="240" fill="#854d0e" stroke="#ca8a04" stroke-width="2" />
+  <text x="480" y="345" fill="#ca8a04" font-size="13" font-family="sans-serif">Грунт: 9.0 см</text>
+  <text x="60" y="380" fill="#a1a1aa" font-size="13" font-family="sans-serif">Каждый указанный слой снижает дозу радиации ровно в 2 раза. Слой грунта 90 см снижает излучение в 1000 раз!</text>
+</svg>

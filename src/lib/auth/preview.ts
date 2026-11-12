@@ -1,0 +1,7 @@
+export const PREVIEW_CLIENT_ID = "app_preview";
+export const PREVIEW_CLIENT_SECRET =
+  "8bcdb7fc5a33874ad933ca568918d5790388a0795e44c4d1dea691f801b17ec5";
+
+export const AUTH_ISSUER_DEFAULT = "https://auth.local";
+
+export const PREVIEW_ALLOWED_HOSTS = ["*"] as const;
