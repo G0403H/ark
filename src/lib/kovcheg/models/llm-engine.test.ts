@@ -16,14 +16,13 @@ const mockChunks: KnowledgeChunk[] = [
   },
 ];
 
-describe("LLM Engine & Safety Guardrails", () => {
-  test("formatRAGPrompt embeds survival context and strict safety constraints", () => {
+describe("LLM Engine & Unconstrained Knowledge System", () => {
+  test("formatRAGPrompt embeds survival context as supplementary knowledge without restrictions", () => {
     const prompt = formatRAGPrompt("как наложить жгут", mockChunks);
 
-    assert.ok(prompt.includes("КОНТЕКСТ ИЗ АРХИВА ВЫЖИВАНИЯ:"));
+    assert.ok(prompt.includes("СПРАВОЧНЫЕ МАТЕРИАЛЫ ИЗ ЛОКАЛЬНОГО АРХИВА"));
     assert.ok(prompt.includes("Наложение жгута: Затяните выше раны"));
-    assert.ok(prompt.includes("Запрещено выдумывать лекарственные дозировки"));
-    assert.ok(prompt.includes("Запрещено советовать пить настойку йода"));
+    assert.ok(prompt.includes("Ты не ограничен только карточками"));
     assert.ok(prompt.includes("Вопрос пользователя: как наложить жгут"));
   });
 
@@ -36,14 +35,16 @@ describe("LLM Engine & Safety Guardrails", () => {
     assert.ok(result.text.includes("Затяните выше раны"));
   });
 
-  test("buildFallbackResponse enforces refusal for dangerous iodine tincture questions", () => {
+  test("buildFallbackResponse provides constructive medical facts for iodine questions without refusal", () => {
     const result = buildFallbackResponse("можно ли пить йод", []);
-    assert.ok(result.text.includes("запрет"));
-    assert.ok(result.text.includes("Настойку йода") || result.text.includes("не пьют"));
+    assert.ok(result.text.includes("Йодид калия"));
+    assert.ok(result.text.includes("щитовидной железы"));
+    assert.ok(result.text.includes("Спиртовой раствор"));
   });
 
-  test("buildFallbackResponse notifies if query asks for unknown dosages", () => {
-    const result = buildFallbackResponse("доза антибиотика ребенку", []);
-    assert.ok(result.text.includes("дозы"));
+  test("buildFallbackResponse answers arbitrary questions constructively even with empty chunks", () => {
+    const result = buildFallbackResponse("как построить шалаш в лесу", []);
+    assert.ok(result.text.includes("Информационная справка"));
+    assert.ok(result.text.includes("Анализ обстановки"));
   });
 });

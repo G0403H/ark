@@ -700,6 +700,22 @@ html[data-theme="paper"] .custom-select-option:focus-visible {
   font-size: 0.82rem;
 }
 
+/* Full width variant */
+.custom-select-full {
+  width: 100%;
+  display: block;
+}
+
+.custom-select-full .custom-select-trigger {
+  width: 100%;
+  border-radius: var(--radius-card, 0.35rem);
+}
+
+.custom-select-full .custom-select-dropdown {
+  min-width: 100%;
+  width: 100%;
+}
+
 .nuclear-entry {
   display: block;
   margin: 0.4rem 0 0.9rem;
@@ -1442,6 +1458,14 @@ hr.fade {
   border-radius: var(--radius-card);
   padding: 0.15rem 0.35rem;
   gap: 0.25rem;
+}
+
+.lang-switcher .custom-select-trigger {
+  border: none;
+  background: transparent;
+  padding: 0.1rem 0.25rem;
+  min-height: unset;
+  box-shadow: none;
 }
 
 .lang-select {

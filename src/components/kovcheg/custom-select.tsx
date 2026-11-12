@@ -15,6 +15,7 @@ export interface CustomSelectProps<T extends string | number = string> {
   placeholder?: string;
   className?: string;
   variant?: "default" | "compact";
+  fullWidth?: boolean;
   style?: React.CSSProperties;
   id?: string;
   disabled?: boolean;
@@ -28,6 +29,7 @@ export function CustomSelect<T extends string | number = string>({
   placeholder,
   className = "",
   variant = "default",
+  fullWidth = false,
   style,
   id,
   disabled = false,
@@ -95,7 +97,7 @@ export function CustomSelect<T extends string | number = string>({
   return (
     <div
       ref={containerRef}
-      className={`custom-select-container ${variant === "compact" ? "custom-select-compact" : ""} ${className}`}
+      className={`custom-select-container ${variant === "compact" ? "custom-select-compact" : ""} ${fullWidth ? "custom-select-full" : ""} ${className}`}
       style={style}
     >
       <button

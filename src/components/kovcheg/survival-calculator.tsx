@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { Calculator, Droplets, Flame, Package } from "lucide-react";
 import { useArk } from "@/lib/kovcheg/store";
 import { t } from "@/lib/kovcheg/i18n";
+import { CustomSelect } from "@/components/kovcheg/custom-select";
 
 export function SurvivalCalculator() {
   const lang = useArk((s) => s.lang) ?? "ru";
@@ -111,45 +112,45 @@ export function SurvivalCalculator() {
 
         <div>
           <label className="meta">{t("scClimate", lang)}</label>
-          <select
-            className="select"
-            style={{ margin: 0, width: "100%", padding: "0.3rem 0.5rem" }}
+          <CustomSelect
+            fullWidth
             value={climate}
-            onChange={(e) => setClimate(e.target.value as any)}
-          >
-            <option value="moderate">{t("scClimateModerate", lang)}</option>
-            <option value="heat">{t("scClimateHeat", lang)}</option>
-            <option value="cold">{t("scClimateCold", lang)}</option>
-          </select>
+            onChange={(val) => setClimate(val as any)}
+            options={[
+              { value: "moderate", label: t("scClimateModerate", lang) },
+              { value: "heat", label: t("scClimateHeat", lang) },
+              { value: "cold", label: t("scClimateCold", lang) },
+            ]}
+          />
         </div>
 
         <div>
           <label className="meta">{t("scActivity", lang)}</label>
-          <select
-            className="select"
-            style={{ margin: 0, width: "100%", padding: "0.3rem 0.5rem" }}
+          <CustomSelect
+            fullWidth
             value={activity}
-            onChange={(e) => setActivity(e.target.value as any)}
-          >
-            <option value="low">{t("scActivityLow", lang)}</option>
-            <option value="medium">{t("scActivityMedium", lang)}</option>
-            <option value="high">{t("scActivityHigh", lang)}</option>
-          </select>
+            onChange={(val) => setActivity(val as any)}
+            options={[
+              { value: "low", label: t("scActivityLow", lang) },
+              { value: "medium", label: t("scActivityMedium", lang) },
+              { value: "high", label: t("scActivityHigh", lang) },
+            ]}
+          />
         </div>
 
         <div>
           <label className="meta">{t("scPeriod", lang)}</label>
-          <select
-            className="select"
-            style={{ margin: 0, width: "100%", padding: "0.3rem 0.5rem" }}
+          <CustomSelect
+            fullWidth
             value={days}
-            onChange={(e) => setDays(parseInt(e.target.value) || 7)}
-          >
-            <option value={3}>{t("scDays3", lang)}</option>
-            <option value={7}>{t("scDays7", lang)}</option>
-            <option value={14}>{t("scDays14", lang)}</option>
-            <option value={30}>{t("scDays30", lang)}</option>
-          </select>
+            onChange={(val) => setDays(Number(val) || 7)}
+            options={[
+              { value: 3, label: t("scDays3", lang) },
+              { value: 7, label: t("scDays7", lang) },
+              { value: 14, label: t("scDays14", lang) },
+              { value: 30, label: t("scDays30", lang) },
+            ]}
+          />
         </div>
       </div>
 

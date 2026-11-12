@@ -10,6 +10,7 @@ import { ButtonBar } from "@/components/kovcheg/button-bar";
 import { AppLockScreen } from "@/components/kovcheg/app-lock-screen";
 import { useHardwareSosDetector } from "@/lib/kovcheg/hardware-sos-detector";
 import { useBackgroundDownloader } from "@/lib/kovcheg/models/background-downloader";
+import { CustomSelect } from "@/components/kovcheg/custom-select";
 
 export function Frame({ children }: { children: ReactNode }) {
   // Listen for emergency physical 3x Power button SOS triggers
@@ -66,28 +67,16 @@ export function Frame({ children }: { children: ReactNode }) {
           <div className="topbar-actions">
             <div className="lang-switcher">
               <Globe size={14} color="var(--color-lamp)" style={{ pointerEvents: "none", margin: "0 0.15rem 0 0.35rem" }} />
-              <select
-                className="select"
-                aria-label={t("langSelect", lang)}
+              <CustomSelect
+                variant="compact"
+                ariaLabel={t("langSelect", lang)}
                 value={lang}
-                onChange={(e) => setLang(e.target.value as any)}
-                style={{
-                  margin: 0,
-                  padding: "0.2rem 0.35rem",
-                  fontSize: "0.8rem",
-                  fontWeight: 600,
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "var(--color-fg)",
-                }}
-              >
-                {LANGUAGES.map((l) => (
-                  <option key={l.code} value={l.code} style={{ background: "var(--color-raise)", color: "var(--color-fg)" }}>
-                    {l.code === "ru" ? "🇷🇺 RU" : l.code === "en" ? "🇬🇧 EN" : "🇸🇦 AR"}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setLang(v as any)}
+                options={LANGUAGES.map((l) => ({
+                  value: l.code,
+                  label: l.code === "ru" ? "RU" : l.code === "en" ? "EN" : "AR",
+                }))}
+              />
             </div>
             <button
               type="button"

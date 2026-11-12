@@ -31,31 +31,11 @@ export function MorseBeacon() {
   const [currentSymbol, setCurrentSymbol] = useState("");
 
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const videoTrackRef = useRef<MediaStreamTrack | null>(null);
   const cancelLoopRef = useRef(false);
 
-  // Initialize torch if supported
-  async function setupTorch() {
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-      });
-      const track = stream.getVideoTracks()[0];
-      const capabilities = track.getCapabilities?.() as any;
-      if (capabilities && capabilities.torch) {
-        videoTrackRef.current = track;
-      }
-    } catch {}
-  }
-
-  async function setHardwareTorch(on: boolean) {
-    if (!torchEnabled || !videoTrackRef.current) return;
-    try {
-      await (videoTrackRef.current as any).applyConstraints({
-        advanced: [{ torch: on }],
-      });
-    } catch {}
+  async function triggerTorch(on: boolean) {
+    if (!torchEnabled) return;
+    await setHardwareTorch(on);
   }
 
   function playTone(durationMs: number) {
@@ -95,13 +75,13 @@ export function MorseBeacon() {
 
     setCurrentSymbol(isDash ? "—" : "•");
     setFlashActive(true);
-    setHardwareTorch(true);
+    triggerTorch(true);
     playTone(dur);
 
     await sleep(dur);
 
     setFlashActive(false);
-    setHardwareTorch(false);
+    triggerTorch(false);
     await sleep(150); // Pause between dots/dashes within letter
   }
 
@@ -142,35 +122,31 @@ export function MorseBeacon() {
     }
 
     setFlashActive(false);
-    setHardwareTorch(false);
+    triggerTorch(false);
     setCurrentSymbol("");
   }
 
-  function handleStart() {
+  async function handleStart() {
     setIsRunning(true);
-    setupTorch().then(() => {
-      runMorseLoop();
-    });
+    if (torchEnabled) {
+      await initHardwareTorch();
+    }
+    runMorseLoop();
   }
 
   function handleStop() {
     cancelLoopRef.current = true;
     setIsRunning(false);
     setFlashActive(false);
-    setHardwareTorch(false);
+    triggerTorch(false);
+    releaseHardwareTorch();
     setCurrentSymbol("");
-    if (videoTrackRef.current) {
-      videoTrackRef.current.stop();
-      videoTrackRef.current = null;
-    }
   }
 
   useEffect(() => {
     return () => {
       cancelLoopRef.current = true;
-      if (videoTrackRef.current) {
-        videoTrackRef.current.stop();
-      }
+      releaseHardwareTorch();
     };
   }, []);
 
