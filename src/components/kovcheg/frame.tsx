@@ -35,7 +35,7 @@ export function Frame({ children }: { children: ReactNode }) {
 
       <div className="sheet">
         <header className="topbar">
-          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+          <div className="topbar-brand-wrap">
             <button
               type="button"
               className="icon-btn menu-toggle-btn"
@@ -46,7 +46,7 @@ export function Frame({ children }: { children: ReactNode }) {
               <Menu size={18} />
               <span className="menu-toggle-label">{t("navMenu", lang)}</span>
             </button>
-            <div>
+            <div style={{ minWidth: 0, overflow: "hidden" }}>
               <p className="brand-kicker">
                 {theme === "stalker" ? t("stalkerKicker", lang) : t("brandKicker", lang)}
               </p>
@@ -56,9 +56,9 @@ export function Frame({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-            <div className="lang-switcher" style={{ display: "flex", alignItems: "center", gap: "0.3rem", padding: "0.1rem 0.3rem" }}>
-              <Globe size={14} color="var(--color-lamp)" style={{ pointerEvents: "none" }} />
+          <div className="topbar-actions">
+            <div className="lang-switcher">
+              <Globe size={14} color="var(--color-lamp)" style={{ pointerEvents: "none", margin: "0 0.15rem 0 0.35rem" }} />
               <select
                 className="select"
                 aria-label={t("langSelect", lang)}
@@ -66,8 +66,8 @@ export function Frame({ children }: { children: ReactNode }) {
                 onChange={(e) => setLang(e.target.value as any)}
                 style={{
                   margin: 0,
-                  padding: "0.2rem 0.5rem",
-                  fontSize: "0.82rem",
+                  padding: "0.2rem 0.35rem",
+                  fontSize: "0.8rem",
                   fontWeight: 600,
                   background: "transparent",
                   border: "none",
@@ -77,14 +77,15 @@ export function Frame({ children }: { children: ReactNode }) {
               >
                 {LANGUAGES.map((l) => (
                   <option key={l.code} value={l.code} style={{ background: "var(--color-raise)", color: "var(--color-fg)" }}>
-                    {l.code === "ru" ? "🇷🇺 RU · Русский" : l.code === "en" ? "🇬🇧 EN · English" : "🇸🇦 AR · العربية"}
+                    {l.code === "ru" ? "🇷🇺 RU" : l.code === "en" ? "🇬🇧 EN" : "🇸🇦 AR"}
                   </option>
                 ))}
               </select>
             </div>
             <button
               type="button"
-              className="icon-btn"
+              className="icon-btn theme-toggle-btn"
+              title={theme === "stalker" ? "Режим Сталкер" : theme === "shelter" ? "Режим Бункер" : "Режим Бумага"}
               onClick={() => {
                 if (theme === "stalker") setTheme("shelter");
                 else if (theme === "shelter") setTheme("paper");
@@ -93,20 +94,17 @@ export function Frame({ children }: { children: ReactNode }) {
               style={{
                 borderColor: theme === "stalker" ? "var(--color-lamp)" : undefined,
                 color: theme === "stalker" ? "var(--color-lamp)" : undefined,
-                display: "flex",
-                alignItems: "center",
-                gap: "0.3rem",
               }}
             >
               {theme === "stalker" ? (
                 <>
-                  <Radiation size={15} />
-                  {t("themeStalker", lang)}
+                  <Radiation size={15} className="theme-toggle-icon" />
+                  <span className="theme-toggle-label">{t("themeStalker", lang)}</span>
                 </>
               ) : theme === "shelter" ? (
-                t("themeShelter", lang)
+                <span className="theme-toggle-label">{t("themeShelter", lang)}</span>
               ) : (
-                t("themePaper", lang)
+                <span className="theme-toggle-label">{t("themePaper", lang)}</span>
               )}
             </button>
           </div>
