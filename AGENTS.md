@@ -18,3 +18,4 @@
 - `npm run typecheck` — проверка типов TypeScript.
 - `npm test` — запуск автоматических тестов.
 - `npm run lint` — проверка линтером.
+- `npm run build:apk` — сборка полноценного подписанного автономного Release APK (`kovcheg-release.apk`).

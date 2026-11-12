@@ -13,7 +13,9 @@ import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
+import android.util.Log;
 import android.view.KeyEvent;
+import android.webkit.ConsoleMessage;
 import android.webkit.GeolocationPermissions;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -31,19 +33,21 @@ import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.webkit.WebViewAssetLoader;
 
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static final String APP_URL = "https://appassets.androidplatform.net/assets/web/index.html";
+    private static final String TAG = "KovchegApp";
+    private static final String APP_HOST = "appassets.androidplatform.net";
+    private static final String APP_URL = "https://" + APP_HOST + "/index.html";
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1001;
 
     private WebView webView;
-    private WebViewAssetLoader assetLoader;
     private GeolocationPermissions.Callback pendingGeoCallback;
     private String pendingGeoOrigin;
 
@@ -61,68 +65,102 @@ public class MainActivity extends AppCompatActivity {
 
         webView = findViewById(R.id.webView);
 
+        // System bars safe area
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.rootLayout), (v, windowInsets) -> {
             Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
             v.setPadding(insets.left, insets.top, insets.right, insets.bottom);
             return windowInsets;
         });
 
-        // Initialize WebViewAssetLoader for secure offline origin https://appassets.androidplatform.net
-        assetLoader = new WebViewAssetLoader.Builder()
-                .setDomain("appassets.androidplatform.net")
-                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
-                .build();
-
+        // WebView Settings for modern responsive PWA / SPA
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
-        settings.setLoadWithOverviewMode(true);
+        settings.setAllowFileAccessFromFileURLs(true);
+        settings.setAllowUniversalAccessFromFileURLs(true);
         settings.setUseWideViewPort(true);
+        settings.setLoadWithOverviewMode(true);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
         settings.setGeolocationEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setUserAgentString(settings.getUserAgentString() + " KovchegApp/1.0 (Android; Offline)");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        }
+        settings.setUserAgentString(settings.getUserAgentString() + " KovchegMobile/1.0 (Android; Offline)");
 
+        // Client to intercept all local assets and provide offline SPA routing
         webView.setWebViewClient(new WebViewClient() {
             @Nullable
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                Uri url = request.getUrl();
-                WebResourceResponse response = assetLoader.shouldInterceptRequest(url);
-                if (response != null) {
-                    return response;
+                Uri uri = request.getUrl();
+                String host = uri.getHost();
+
+                // Only intercept our app origin
+                if (host == null || !host.equalsIgnoreCase(APP_HOST)) {
+                    return null;
                 }
 
-                // SPA Fallback for client-side routing within https://appassets.androidplatform.net
-                if (url.getHost() != null && url.getHost().equals("appassets.androidplatform.net")) {
-                    String path = url.getPath();
-                    if (path != null && !path.contains(".")) {
-                        try {
-                            InputStream is = getAssets().open("web/index.html");
-                            return new WebResourceResponse("text/html", "UTF-8", is);
-                        } catch (Exception ignored) {
-                        }
+                String rawPath = uri.getPath();
+                if (rawPath == null || rawPath.isEmpty() || rawPath.equals("/")) {
+                    rawPath = "/index.html";
+                }
+
+                String cleanPath = rawPath.startsWith("/") ? rawPath.substring(1) : rawPath;
+
+                // 1. Direct file match in "www/"
+                WebResourceResponse directResp = tryServeAsset("www/" + cleanPath);
+                if (directResp != null) {
+                    return directResp;
+                }
+
+                // 2. Route with .html (e.g. /alarm -> www/alarm.html)
+                WebResourceResponse htmlResp = tryServeAsset("www/" + cleanPath + ".html");
+                if (htmlResp != null) {
+                    return htmlResp;
+                }
+
+                // 3. Route with /index.html (e.g. /shelves -> www/shelves/index.html)
+                WebResourceResponse dirIndexResp = tryServeAsset("www/" + cleanPath + "/index.html");
+                if (dirIndexResp != null) {
+                    return dirIndexResp;
+                }
+
+                // 4. SPA Fallback: if not an asset request (no file extension), return main index.html
+                if (!cleanPath.contains(".")) {
+                    WebResourceResponse spaResp = tryServeAsset("www/index.html");
+                    if (spaResp != null) {
+                        return spaResp;
                     }
                 }
+
+                Log.w(TAG, "Resource not found in assets: " + cleanPath);
                 return null;
             }
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String host = request.getUrl().getHost();
-                if (host != null && host.equals("appassets.androidplatform.net")) {
-                    return false;
+                if (host != null && host.equalsIgnoreCase(APP_HOST)) {
+                    return false; // let WebView handle internal links
                 }
                 return false;
             }
         });
 
         webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+                Log.d(TAG, "[Console] " + consoleMessage.message() + " (" +
+                        consoleMessage.sourceId() + ":" + consoleMessage.lineNumber() + ")");
+                return true;
+            }
+
             @Override
             public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
                 if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -149,6 +187,39 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private WebResourceResponse tryServeAsset(String fullAssetPath) {
+        try {
+            InputStream is = getAssets().open(fullAssetPath);
+            String mimeType = getMimeType(fullAssetPath);
+
+            Map<String, String> headers = new HashMap<>();
+            headers.put("Access-Control-Allow-Origin", "*");
+            headers.put("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+            headers.put("Cache-Control", "no-cache");
+
+            return new WebResourceResponse(mimeType, "UTF-8", 200, "OK", headers, is);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String getMimeType(String path) {
+        String lower = path.toLowerCase();
+        if (lower.endsWith(".html")) return "text/html";
+        if (lower.endsWith(".css")) return "text/css";
+        if (lower.endsWith(".js") || lower.endsWith(".mjs")) return "application/javascript";
+        if (lower.endsWith(".json") || lower.endsWith(".webmanifest")) return "application/json";
+        if (lower.endsWith(".svg")) return "image/svg+xml";
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".woff2")) return "font/woff2";
+        if (lower.endsWith(".woff")) return "font/woff";
+        if (lower.endsWith(".ttf")) return "font/ttf";
+        if (lower.endsWith(".wasm")) return "application/wasm";
+        return "application/octet-stream";
+    }
+
     private void initHardwareSosReceiver() {
         powerButtonSosReceiver = new BroadcastReceiver() {
             @Override
@@ -158,7 +229,6 @@ public class MainActivity extends AppCompatActivity {
                     long now = System.currentTimeMillis();
                     screenToggleTimestamps.add(now);
 
-                    // Clean up timestamps older than the window
                     while (!screenToggleTimestamps.isEmpty() && (now - screenToggleTimestamps.get(0) > SOS_WINDOW_MS)) {
                         screenToggleTimestamps.remove(0);
                     }
@@ -183,7 +253,7 @@ public class MainActivity extends AppCompatActivity {
         // Morse SOS vibration (... --- ...)
         vibrateSosPattern();
 
-        // Dispatch hardware-sos event directly into the WebView for GPS friend broadcast and app-lock SOS handler
+        // Dispatch hardware-sos event directly into the WebView
         if (webView != null) {
             long ts = System.currentTimeMillis();
             String js = "window.dispatchEvent(new CustomEvent('kovcheg:hardware-sos', { detail: { timestamp: " + ts + " } }));";

@@ -11,7 +11,7 @@ dist/
 build/
 android/.gradle/
 android/app/build/
-android/app/src/main/assets/web/
+android/app/src/main/assets/
 local.properties
 
 # Local Environment Variables
