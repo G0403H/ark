@@ -3,6 +3,7 @@
 # ☢️ KOVCHEG (КОВЧЕГ) / ARK
 ### Autonomous Offline Survival Operating System & Tactical Emergency Compendium
 
+[![Download APK](https://img.shields.io/badge/Download-Release%20APK%20(v1.0.0)-22c55e.svg?logo=android&logoColor=white)](https://github.com/G0403H/ark/releases/latest)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-amber.svg)](LICENSE.md)
 [![Offline First](https://img.shields.io/badge/Network-100%25%20Zero--Cloud%20Offline-success.svg)](#zero-cloud-architecture)
 [![Languages](https://img.shields.io/badge/Languages-RU%20%7C%20EN%20%7C%20AR-blue.svg)](#multi-language-support)
@@ -17,7 +18,7 @@
   <b>Zero cloud dependencies. Zero external CDNs. Zero telecommunications required.</b>
 </p>
 
-[About Project](ABOUT.md) • [Key Features](#key-features) • [Showcase Gallery](#showcase-gallery) • [Interactive Tools](#interactive-field-tools) • [Hardware Links](#hardware-integrations) • [Quick Start](#quick-start) • [Documentation](docs/) • [License](#license)
+[⚡ Download APK](https://github.com/G0403H/ark/releases/latest) • [About Project](ABOUT.md) • [Key Features](#key-features) • [Showcase Gallery](#showcase-gallery) • [Interactive Tools](#interactive-field-tools) • [Hardware Links](#hardware-integrations) • [Quick Start](#quick-start) • [Documentation](docs/) • [License](#license)
 
 </div>
 
