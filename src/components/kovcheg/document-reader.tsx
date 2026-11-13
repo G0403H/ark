@@ -7,6 +7,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  ChevronsLeft,
+  ChevronsRight,
   Layers,
   Sparkles,
   Type,
@@ -49,6 +51,7 @@ export function DocumentReaderModal({
   const [pageInChapter, setPageInChapter] = useState<number>(1);
   const [showToc, setShowToc] = useState<boolean>(false);
   const [showBookmarks, setShowBookmarks] = useState<boolean>(false);
+  const [showMenu, setShowMenu] = useState<boolean>(false);
   const [tocFilter, setTocFilter] = useState<string>("");
 
   // Translation state (On-the-fly offline AI page translation)
@@ -288,25 +291,37 @@ export function DocumentReaderModal({
     );
   }, [chapters, tocFilter]);
 
-  // Theme styling definitions
+  // High-contrast, crystal-clear theme styling definitions
   const themeStyles = {
     shelter: {
-      bg: "var(--color-sink)",
-      text: "var(--color-ink)",
-      headerBg: "var(--color-raise)",
-      border: "var(--color-line)",
+      bg: "#161410",
+      text: "#f5eee4", // Crisp warm parchment white - high contrast against dark background
+      headingColor: "#f5c563",
+      metaColor: "#b8ab97",
+      headerBg: "#1f1b15",
+      border: "#3d3529",
+      accent: "#e0a045",
+      chipBg: "rgba(224, 160, 69, 0.15)",
     },
     paper: {
-      bg: "#faf8f5",
-      text: "#1c1917",
-      headerBg: "#f5f2eb",
-      border: "#e7e2d6",
+      bg: "#fbf7f0",
+      text: "#1a1612", // Crisp dark ink on warm paper
+      headingColor: "#2b2218",
+      metaColor: "#665846",
+      headerBg: "#f2ece0",
+      border: "#d9ccb6",
+      accent: "#8a5314",
+      chipBg: "rgba(0, 0, 0, 0.06)",
     },
     stalker: {
-      bg: "#0d0f0c",
-      text: "#c4cfbc",
-      headerBg: "#161b14",
-      border: "#252f20",
+      bg: "#080b06",
+      text: "#dcf5cf", // Ultra-crisp bright tactical phosphor green-white
+      headingColor: "#f59e0b",
+      metaColor: "#7ea372",
+      headerBg: "#12180e",
+      border: "#26351e",
+      accent: "#22c55e",
+      chipBg: "rgba(34, 197, 94, 0.14)",
     },
   }[readerTheme];
 
@@ -324,97 +339,86 @@ export function DocumentReaderModal({
         overflow: "hidden",
       }}
     >
-      {/* Top Header Bar */}
+      {/* Top Header Bar — Single Compact Row */}
       <header
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          padding: "0.6rem 1rem",
+          padding: "0.5rem 0.8rem",
           background: themeStyles.headerBg,
           borderBottom: `1px solid ${themeStyles.border}`,
           zIndex: 30,
-          flexWrap: "wrap",
           gap: "0.5rem",
+          height: "3.6rem",
+          boxSizing: "border-box",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", minWidth: 0, flex: 1 }}>
+        {/* Left: Back button + Title & Chapter */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0, flex: 1 }}>
           <button
             type="button"
             className="icon-btn"
             onClick={onClose}
-            title="Закрыть читалку"
-            style={{ minHeight: "2.3rem", minWidth: "2.3rem", borderRadius: "var(--radius-card)" }}
+            title="Назад"
+            style={{ minHeight: "2.3rem", minWidth: "2.3rem", flexShrink: 0, borderRadius: "var(--radius-card)" }}
           >
             <ArrowLeft size={18} />
           </button>
 
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
             <h1
               style={{
-                fontSize: "1rem",
+                fontSize: "0.92rem",
                 margin: 0,
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 color: themeStyles.text,
+                lineHeight: 1.25,
+                fontWeight: 600,
               }}
               title={doc.name}
             >
               {doc.name}
             </h1>
             <span
-              className="meta"
               style={{
-                fontSize: "0.78rem",
-                display: "block",
+                fontSize: "0.72rem",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 color: "var(--color-lamp)",
+                lineHeight: 1.2,
+                marginTop: 2,
               }}
             >
-              Глава {currentChapterIndex + 1} из {chapters.length}: {activeChapter.title}
+              Гл. {currentChapterIndex + 1}/{chapters.length}: {activeChapter.title}
             </span>
           </div>
         </div>
 
-        {/* Header Actions */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
-          {/* Table of Contents Button */}
-          <button
-            type="button"
-            className="text-btn"
-            onClick={() => setShowToc((v) => !v)}
-            style={{
-              minHeight: "2.2rem",
-              padding: "0.2rem 0.6rem",
-              fontSize: "0.82rem",
-              background: showToc ? "var(--color-lamp)" : "transparent",
-              color: showToc ? "var(--color-ink)" : "inherit",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <List size={15} />
-            <span>Оглавление ({chapters.length})</span>
-          </button>
-
-          {/* Bookmarks list button */}
+        {/* Right: Exactly 3 non-overlapping icon actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexShrink: 0 }}>
+          {/* Table of Contents button */}
           <button
             type="button"
             className="icon-btn"
-            onClick={() => setShowBookmarks((v) => !v)}
-            title="Закладки"
+            onClick={() => {
+              setShowToc((v) => !v);
+              setShowMenu(false);
+              setShowBookmarks(false);
+            }}
+            title={`Оглавление (${chapters.length} глав)`}
             style={{
-              minHeight: "2.2rem",
-              minWidth: "2.2rem",
-              background: showBookmarks ? "var(--color-lamp)" : "transparent",
-              color: showBookmarks ? "var(--color-ink)" : "inherit",
+              minHeight: "2.3rem",
+              minWidth: "2.3rem",
+              background: showToc ? "var(--color-lamp)" : "transparent",
+              color: showToc ? "var(--color-ink)" : "inherit",
+              borderRadius: "var(--radius-card)",
             }}
           >
-            <Bookmark size={16} />
+            <List size={18} />
           </button>
 
           {/* Bookmark Current Page */}
@@ -422,174 +426,260 @@ export function DocumentReaderModal({
             type="button"
             className="icon-btn"
             onClick={handleToggleBookmark}
-            title={isCurrentPageBookmarked ? "Удалить закладку" : "Добавить страницу в закладки"}
+            title={isCurrentPageBookmarked ? "Удалить страницу из закладок" : "Добавить страницу в закладки"}
             style={{
-              minHeight: "2.2rem",
-              minWidth: "2.2rem",
+              minHeight: "2.3rem",
+              minWidth: "2.3rem",
               color: isCurrentPageBookmarked ? "var(--color-lamp)" : "inherit",
+              borderRadius: "var(--radius-card)",
             }}
           >
             {isCurrentPageBookmarked ? <BookmarkCheck size={18} /> : <Bookmark size={18} />}
           </button>
 
-          {/* Font Controls */}
-          <button
-            type="button"
-            className="text-btn"
-            onClick={() => setFontSize((s) => Math.max(0.85, Number((s - 0.1).toFixed(2))))}
-            style={{ minHeight: "2.2rem", padding: "0.2rem 0.5rem", fontSize: "0.85rem" }}
-            title="Уменьшить шрифт"
-          >
-            A−
-          </button>
-          <button
-            type="button"
-            className="text-btn"
-            onClick={() => setFontSize((s) => Math.min(1.6, Number((s + 0.1).toFixed(2))))}
-            style={{ minHeight: "2.2rem", padding: "0.2rem 0.5rem", fontSize: "0.85rem" }}
-            title="Увеличить шрифт"
-          >
-            A+
-          </button>
-
-          {/* Serif / Sans Toggle */}
+          {/* Unified Dropdown Menu Button */}
           <button
             type="button"
             className="icon-btn"
-            onClick={() => setFontFamily((f) => (f === "serif" ? "sans" : "serif"))}
-            title="Сменить гарнитуру (С засечками / Без засечек)"
-            style={{ minHeight: "2.2rem", minWidth: "2.2rem" }}
-          >
-            <Type size={16} />
-          </button>
-
-          {/* Reader Theme Toggle */}
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={() =>
-              setReaderTheme((t) =>
-                t === "shelter" ? "paper" : t === "paper" ? "stalker" : "shelter"
-              )
-            }
-            title={`Тема читалщика: ${readerTheme}`}
-            style={{ minHeight: "2.2rem", minWidth: "2.2rem" }}
-          >
-            <Palette size={16} />
-          </button>
-
-          {/* AI Chapter Analysis Trigger */}
-          <button
-            type="button"
-            className="text-btn"
-            onClick={() => setShowAi((v) => !v)}
+            onClick={() => {
+              setShowMenu((v) => !v);
+              setShowToc(false);
+              setShowBookmarks(false);
+            }}
+            title="Параметры чтения и инструменты"
             style={{
-              minHeight: "2.2rem",
-              padding: "0.2rem 0.6rem",
-              fontSize: "0.82rem",
-              background: showAi ? "var(--color-lamp)" : "transparent",
-              color: showAi ? "var(--color-ink)" : "inherit",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
+              minHeight: "2.3rem",
+              minWidth: "2.3rem",
+              background: showMenu ? "var(--color-lamp)" : "transparent",
+              color: showMenu ? "var(--color-ink)" : "inherit",
+              border: showMenu ? "1px solid var(--color-lamp)" : `1px solid ${themeStyles.border}`,
+              borderRadius: "var(--radius-card)",
             }}
           >
-            <Sparkles size={14} />
-            <span>ИИ главы</span>
-          </button>
-
-          {/* Close button */}
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={onClose}
-            title="Закрыть"
-            style={{ minHeight: "2.2rem", minWidth: "2.2rem" }}
-          >
-            <X size={18} />
+            <Sliders size={17} />
           </button>
         </div>
       </header>
 
-      {/* Sub-bar: Translation & Mode Controls */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "0.35rem 1rem",
-          background: "rgba(0, 0, 0, 0.4)",
-          borderBottom: `1px solid ${themeStyles.border}`,
-          fontSize: "0.82rem",
-          flexWrap: "wrap",
-          gap: "0.4rem",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <span className="meta" style={{ fontSize: "0.78rem" }}>
-            📖 {activeChapter.title}
-          </span>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-          {/* Target translation language */}
-          <select
-            value={translationTargetLang}
-            onChange={(e) => setTranslationTargetLang(e.target.value as any)}
+      {/* Unified Settings & Tools Dropdown Menu */}
+      {showMenu && (
+        <>
+          {/* Backdrop to close menu */}
+          <div
+            onClick={() => setShowMenu(false)}
             style={{
-              padding: "0.15rem 0.4rem",
-              fontSize: "0.78rem",
-              borderRadius: "4px",
+              position: "fixed",
+              inset: 0,
+              zIndex: 35,
+              background: "rgba(0,0,0,0.45)",
+            }}
+          />
+
+          <div
+            style={{
+              position: "absolute",
+              top: "3.9rem",
+              right: "0.8rem",
+              width: "min(330px, calc(100vw - 1.6rem))",
+              maxHeight: "calc(100vh - 5.5rem)",
+              overflowY: "auto",
               background: "var(--color-raise)",
-              color: "inherit",
               border: "1px solid var(--color-line)",
+              borderRadius: "var(--radius-card)",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.55)",
+              zIndex: 40,
+              padding: "1rem",
+              fontSize: "0.85rem",
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.85rem",
             }}
           >
-            <option value="ru">Перевод на Русский</option>
-            <option value="en">Translate to English</option>
-            <option value="ar">الترجمة إلى العربية</option>
-          </select>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <strong style={{ fontSize: "0.95rem", color: "var(--color-lamp)" }}>
+                Параметры чтения
+              </strong>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => setShowMenu(false)}
+                style={{ minHeight: "1.8rem", minWidth: "1.8rem" }}
+              >
+                <X size={15} />
+              </button>
+            </div>
 
-          <button
-            type="button"
-            className="text-btn"
-            disabled={isTranslating}
-            onClick={handleTranslatePage}
-            style={{
-              padding: "0.15rem 0.5rem",
-              fontSize: "0.78rem",
-              minHeight: "1.8rem",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            {isTranslating ? (
-              <>
-                <Loader2 size={12} className="spin" />
-                <span>Перевод...</span>
-              </>
-            ) : translatedCurrentPage ? (
-              pageViewMode === "translated" ? "Показать оригинал" : "Показать перевод"
-            ) : (
-              "Перевести страницу (ИИ)"
-            )}
-          </button>
+            {/* Typography / Font Size Controls */}
+            <div>
+              <span className="meta" style={{ fontSize: "0.76rem", display: "block", marginBottom: "0.35rem" }}>
+                Размер шрифта и гарнитура
+              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <button
+                  type="button"
+                  className="text-btn"
+                  onClick={() => setFontSize((s) => Math.max(0.8, Number((s - 0.1).toFixed(2))))}
+                  style={{ flex: 1, minHeight: "2.2rem" }}
+                  title="Уменьшить шрифт"
+                >
+                  A−
+                </button>
+                <span style={{ fontSize: "0.85rem", fontWeight: 700, minWidth: "3.2rem", textAlign: "center" }}>
+                  {Math.round(fontSize * 100)}%
+                </span>
+                <button
+                  type="button"
+                  className="text-btn"
+                  onClick={() => setFontSize((s) => Math.min(1.6, Number((s + 0.1).toFixed(2))))}
+                  style={{ flex: 1, minHeight: "2.2rem" }}
+                  title="Увеличить шрифт"
+                >
+                  A+
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  data-on={fontFamily === "serif" ? "1" : "0"}
+                  onClick={() => setFontFamily((f) => (f === "serif" ? "sans" : "serif"))}
+                  style={{ minHeight: "2.2rem", padding: "0 0.6rem" }}
+                >
+                  {fontFamily === "serif" ? "Serif" : "Sans"}
+                </button>
+              </div>
+            </div>
 
-          {translatedCurrentPage && (
-            <button
-              type="button"
-              className="text-btn"
-              onClick={() =>
-                setPageViewMode((v) => (v === "dual" ? "original" : "dual"))
-              }
-              style={{ padding: "0.15rem 0.5rem", fontSize: "0.78rem", minHeight: "1.8rem" }}
-            >
-              {pageViewMode === "dual" ? "Один текст" : "Оригинал + Перевод"}
-            </button>
-          )}
-        </div>
-      </div>
+            {/* Theme Picker */}
+            <div>
+              <span className="meta" style={{ fontSize: "0.76rem", display: "block", marginBottom: "0.35rem" }}>
+                Тема оформления
+              </span>
+              <div style={{ display: "flex", gap: "0.35rem" }}>
+                <button
+                  type="button"
+                  className="chip"
+                  data-on={readerTheme === "shelter" ? "1" : "0"}
+                  onClick={() => setReaderTheme("shelter")}
+                  style={{ flex: 1, minHeight: "2rem", fontSize: "0.78rem", padding: "0 0.3rem" }}
+                >
+                  🌙 Убежище
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  data-on={readerTheme === "paper" ? "1" : "0"}
+                  onClick={() => setReaderTheme("paper")}
+                  style={{ flex: 1, minHeight: "2rem", fontSize: "0.78rem", padding: "0 0.3rem" }}
+                >
+                  📜 Бумага
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  data-on={readerTheme === "stalker" ? "1" : "0"}
+                  onClick={() => setReaderTheme("stalker")}
+                  style={{ flex: 1, minHeight: "2rem", fontSize: "0.78rem", padding: "0 0.3rem" }}
+                >
+                  ☢ Сталкер
+                </button>
+              </div>
+            </div>
+
+            <hr style={{ border: "none", borderTop: "1px solid var(--color-line)", margin: 0 }} />
+
+            {/* Offline AI Translation */}
+            <div>
+              <span className="meta" style={{ fontSize: "0.76rem", display: "block", marginBottom: "0.35rem" }}>
+                Офлайн-перевод страницы (ИИ)
+              </span>
+              <div style={{ display: "flex", gap: "0.4rem", marginBottom: "0.4rem" }}>
+                <select
+                  value={translationTargetLang}
+                  onChange={(e) => setTranslationTargetLang(e.target.value as any)}
+                  style={{ flex: 1, padding: "0.3rem 0.5rem", fontSize: "0.82rem" }}
+                >
+                  <option value="ru">Русский (RU)</option>
+                  <option value="en">English (EN)</option>
+                  <option value="ar">العربية (AR)</option>
+                </select>
+                <button
+                  type="button"
+                  className="text-btn"
+                  disabled={isTranslating}
+                  onClick={handleTranslatePage}
+                  style={{ minHeight: "2.1rem", padding: "0 0.6rem", fontSize: "0.82rem" }}
+                >
+                  {isTranslating
+                    ? "Перевод..."
+                    : translatedCurrentPage
+                    ? pageViewMode === "translated"
+                      ? "Оригинал"
+                      : "Перевод"
+                    : "Перевести"}
+                </button>
+              </div>
+
+              {translatedCurrentPage && (
+                <button
+                  type="button"
+                  className="chip"
+                  data-on={pageViewMode === "dual" ? "1" : "0"}
+                  onClick={() => setPageViewMode((v) => (v === "dual" ? "original" : "dual"))}
+                  style={{ width: "100%", minHeight: "2rem", fontSize: "0.78rem" }}
+                >
+                  {pageViewMode === "dual" ? "✓ Режим: Оригинал + Перевод" : "Режим: Параллельный перевод"}
+                </button>
+              )}
+            </div>
+
+            <hr style={{ border: "none", borderTop: "1px solid var(--color-line)", margin: 0 }} />
+
+            {/* Quick Actions (AI chapter & Bookmarks) */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+              <button
+                type="button"
+                className="text-btn"
+                onClick={() => {
+                  setShowAi(true);
+                  setShowMenu(false);
+                }}
+                style={{
+                  minHeight: "2.2rem",
+                  width: "100%",
+                  justifyContent: "flex-start",
+                  fontSize: "0.82rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Sparkles size={15} color="var(--color-lamp)" />
+                <span>ИИ-Анализ и выжимка главы</span>
+              </button>
+
+              <button
+                type="button"
+                className="text-btn"
+                onClick={() => {
+                  setShowBookmarks(true);
+                  setShowMenu(false);
+                }}
+                style={{
+                  minHeight: "2.2rem",
+                  width: "100%",
+                  justifyContent: "flex-start",
+                  fontSize: "0.82rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Bookmark size={15} />
+                <span>Все закладки книги ({docBookmarks.length})</span>
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Main Reading Canvas & Side Drawers */}
       <div
@@ -807,7 +897,7 @@ export function DocumentReaderModal({
             {clampedPage === 1 && (
               <div
                 style={{
-                  borderBottom: `2px solid var(--color-lamp)`,
+                  borderBottom: `2px solid ${themeStyles.accent}`,
                   paddingBottom: "0.8rem",
                   marginBottom: "1.5rem",
                 }}
@@ -817,7 +907,7 @@ export function DocumentReaderModal({
                     fontSize: "0.75rem",
                     textTransform: "uppercase",
                     letterSpacing: "0.08em",
-                    color: "var(--color-lamp)",
+                    color: themeStyles.accent,
                     fontWeight: 700,
                   }}
                 >
@@ -825,9 +915,9 @@ export function DocumentReaderModal({
                 </span>
                 <h2
                   style={{
-                    fontSize: "1.5rem",
+                    fontSize: "1.45rem",
                     margin: "0.3rem 0 0",
-                    color: themeStyles.text,
+                    color: themeStyles.headingColor,
                     lineHeight: 1.3,
                   }}
                 >
@@ -852,14 +942,14 @@ export function DocumentReaderModal({
                       fontSize: "0.72rem",
                       textTransform: "uppercase",
                       fontWeight: 700,
-                      color: "var(--color-muted)",
+                      color: themeStyles.metaColor,
                       display: "block",
                       marginBottom: "0.4rem",
                     }}
                   >
                     Оригинал:
                   </span>
-                  <div style={{ whiteSpace: "pre-wrap" }}>{currentPageText}</div>
+                  <div style={{ whiteSpace: "pre-wrap", color: themeStyles.text }}>{currentPageText}</div>
                 </div>
 
                 <div
@@ -867,7 +957,7 @@ export function DocumentReaderModal({
                     padding: "1rem",
                     background: "rgba(224, 160, 69, 0.06)",
                     borderRadius: "var(--radius-card)",
-                    border: "1px solid var(--color-lamp)",
+                    border: `1px solid ${themeStyles.accent}`,
                   }}
                 >
                   <span
@@ -875,19 +965,19 @@ export function DocumentReaderModal({
                       fontSize: "0.72rem",
                       textTransform: "uppercase",
                       fontWeight: 700,
-                      color: "var(--color-lamp)",
+                      color: themeStyles.accent,
                       display: "block",
                       marginBottom: "0.4rem",
                     }}
                   >
                     Офлайн-перевод (ИИ):
                   </span>
-                  <div style={{ whiteSpace: "pre-wrap" }}>{translatedCurrentPage}</div>
+                  <div style={{ whiteSpace: "pre-wrap", color: themeStyles.text }}>{translatedCurrentPage}</div>
                 </div>
               </div>
             ) : (
               /* Single Page View */
-              <div style={{ whiteSpace: "pre-wrap" }}>
+              <div style={{ whiteSpace: "pre-wrap", color: themeStyles.text }}>
                 {pageViewMode === "translated" && translatedCurrentPage
                   ? translatedCurrentPage
                   : currentPageText}
@@ -1061,37 +1151,47 @@ export function DocumentReaderModal({
         )}
       </div>
 
-      {/* Bottom Sticky Page Navigation Bar */}
+      {/* Bottom Sticky Page Navigation Bar — Single Compact Mobile Row */}
       <footer
         style={{
           position: "absolute",
           bottom: 0,
           left: 0,
           right: 0,
-          height: "4rem",
+          height: "3.4rem",
           background: themeStyles.headerBg,
           borderTop: `1px solid ${themeStyles.border}`,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          padding: "0 1rem",
+          padding: "0 0.5rem",
           zIndex: 30,
-          boxShadow: "0 -4px 12px rgba(0,0,0,0.2)",
-          flexWrap: "wrap",
-          gap: "0.5rem",
+          boxShadow: "0 -4px 12px rgba(0,0,0,0.25)",
+          flexWrap: "nowrap",
+          gap: "0.25rem",
+          boxSizing: "border-box",
         }}
       >
-        {/* Left: Previous Chapter & Previous Page */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+        {/* Left: Previous Chapter (ChevronsLeft) + Previous Page (ChevronLeft) */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.25rem", flexShrink: 0 }}>
           <button
             type="button"
-            className="text-btn"
+            className="icon-btn"
             disabled={currentChapterIndex === 0}
             onClick={handlePrevChapter}
-            style={{ minHeight: "2.3rem", padding: "0.2rem 0.6rem", fontSize: "0.82rem" }}
+            style={{
+              minHeight: "2.3rem",
+              minWidth: "2.3rem",
+              padding: 0,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: "var(--radius-card)",
+              opacity: currentChapterIndex === 0 ? 0.35 : 1,
+            }}
             title="Предыдущая глава"
           >
-            ◀◀ Глава
+            <ChevronsLeft size={18} />
           </button>
           <button
             type="button"
@@ -1101,26 +1201,60 @@ export function DocumentReaderModal({
             onClick={handlePrevPage}
             style={{
               minHeight: "2.3rem",
-              padding: "0.2rem 0.8rem",
+              minWidth: "2.4rem",
+              padding: "0 0.4rem",
               fontWeight: 600,
               display: "inline-flex",
               alignItems: "center",
-              gap: 4,
+              justifyContent: "center",
+              borderRadius: "var(--radius-card)",
+              opacity: currentChapterIndex === 0 && clampedPage === 1 ? 0.35 : 1,
             }}
+            title="Предыдущая страница"
           >
-            <ChevronLeft size={16} />
-            <span>Назад</span>
+            <ChevronLeft size={18} />
           </button>
         </div>
 
-        {/* Center: Chapter and Page Counter with Range Slider */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, minWidth: "180px", maxWidth: "26rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem" }}>
-            <span style={{ fontWeight: 700, color: "var(--color-lamp)" }}>
-              Стр. {clampedPage} из {chapterPages.length}
+        {/* Center: Compact single-line indicator with mini range scrubber */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            flex: 1,
+            minWidth: 0,
+            padding: "0 0.2rem",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: "0.25rem",
+              fontSize: "0.82rem",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              maxWidth: "100%",
+            }}
+          >
+            <span style={{ fontWeight: 700, color: themeStyles.accent }}>
+              Стр. {clampedPage}/{chapterPages.length}
             </span>
-            <span className="meta" style={{ fontSize: "0.75rem" }}>
-              (Глава {currentChapterIndex + 1}/{chapters.length} · Всего ~{currentGlobalPage}/{totalGlobalPages} стр.)
+            <span
+              className="meta"
+              style={{
+                fontSize: "0.72rem",
+                color: themeStyles.text,
+                opacity: 0.75,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              · Гл. {currentChapterIndex + 1}/{chapters.length}
             </span>
           </div>
 
@@ -1134,9 +1268,10 @@ export function DocumentReaderModal({
               onChange={(e) => setPageInChapter(parseInt(e.target.value, 10))}
               style={{
                 width: "100%",
-                maxWidth: "20rem",
-                marginTop: "0.2rem",
-                accentColor: "var(--color-lamp)",
+                maxWidth: "11rem",
+                height: "3px",
+                marginTop: "0.15rem",
+                accentColor: themeStyles.accent,
                 cursor: "pointer",
               }}
               aria-label="Перелистывание страниц"
@@ -1144,8 +1279,8 @@ export function DocumentReaderModal({
           )}
         </div>
 
-        {/* Right: Next Page & Next Chapter */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+        {/* Right: Next Page (ChevronRight) + Next Chapter (ChevronsRight) */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.25rem", flexShrink: 0 }}>
           <button
             type="button"
             className="chip"
@@ -1157,25 +1292,41 @@ export function DocumentReaderModal({
             onClick={handleNextPage}
             style={{
               minHeight: "2.3rem",
-              padding: "0.2rem 0.8rem",
+              minWidth: "2.4rem",
+              padding: "0 0.4rem",
               fontWeight: 600,
               display: "inline-flex",
               alignItems: "center",
-              gap: 4,
+              justifyContent: "center",
+              borderRadius: "var(--radius-card)",
+              opacity:
+                currentChapterIndex === chapters.length - 1 &&
+                clampedPage === chapterPages.length
+                  ? 0.35
+                  : 1,
             }}
+            title="Следующая страница"
           >
-            <span>Вперед</span>
-            <ChevronRight size={16} />
+            <ChevronRight size={18} />
           </button>
           <button
             type="button"
-            className="text-btn"
+            className="icon-btn"
             disabled={currentChapterIndex === chapters.length - 1}
             onClick={handleNextChapter}
-            style={{ minHeight: "2.3rem", padding: "0.2rem 0.6rem", fontSize: "0.82rem" }}
+            style={{
+              minHeight: "2.3rem",
+              minWidth: "2.3rem",
+              padding: 0,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: "var(--radius-card)",
+              opacity: currentChapterIndex === chapters.length - 1 ? 0.35 : 1,
+            }}
             title="Следующая глава"
           >
-            Глава ▶▶
+            <ChevronsRight size={18} />
           </button>
         </div>
       </footer>

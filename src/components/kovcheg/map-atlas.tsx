@@ -21,6 +21,7 @@ import { useArk } from "@/lib/kovcheg/store";
 import { useGpsPeerStore } from "@/lib/kovcheg/gps-peer-tracker";
 import { GpsFriendFinder } from "@/components/kovcheg/gps-friend-finder";
 import { TacticalSecurityGate } from "@/components/kovcheg/tactical-security-gate";
+import { TacticalCompass } from "@/components/kovcheg/tactical-compass";
 
 export interface Waypoint {
   id: string;
@@ -106,7 +107,7 @@ export function MapAtlasView() {
   const [centerLng, setCenterLng] = useState<number>(37.61);
   const [zoom, setZoom] = useState<number>(1);
   const [mapMode, setMapMode] = useState<"topo" | "relief" | "grid">("topo");
-  const [activeTab, setActiveTab] = useState<"map" | "waypoints" | "friends" | "packs">("map");
+  const [activeTab, setActiveTab] = useState<"map" | "waypoints" | "compass" | "friends" | "packs">("map");
 
   // GPS Peer Friends
   const friends = useGpsPeerStore((s) => s.friends);
@@ -512,6 +513,22 @@ export function MapAtlasView() {
           </button>
           <button
             type="button"
+            className={`text-btn ${activeTab === "compass" ? "active" : ""}`}
+            style={{
+              background: activeTab === "compass" ? "var(--color-lamp)" : "transparent",
+              color: activeTab === "compass" ? "var(--color-ink)" : "inherit",
+              fontWeight: 600,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.3rem",
+            }}
+            onClick={() => setActiveTab("compass")}
+          >
+            <Compass size={15} />
+            <span>🧭 Компас</span>
+          </button>
+          <button
+            type="button"
             className={`text-btn ${activeTab === "waypoints" ? "active" : ""}`}
             style={{
               background: activeTab === "waypoints" ? "var(--color-lamp)" : "transparent",
@@ -717,6 +734,15 @@ export function MapAtlasView() {
               >
                 <Layers size={15} />
               </button>
+              <button
+                type="button"
+                className="icon-btn"
+                style={{ background: "rgba(24, 24, 27, 0.85)", color: "var(--color-lamp)" }}
+                onClick={() => setActiveTab("compass")}
+                title="Открыть компас"
+              >
+                <Compass size={16} />
+              </button>
             </div>
 
             {/* Bottom Bar: Quick Save Waypoint at Center */}
@@ -830,6 +856,30 @@ export function MapAtlasView() {
               </div>
             )}
 
+            {navCalculation && (
+              <button
+                type="button"
+                className="text-btn"
+                style={{
+                  marginTop: "0.6rem",
+                  width: "100%",
+                  justifyContent: "center",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.4rem",
+                  fontWeight: 600,
+                  background: "var(--color-raise)",
+                  border: "1px solid var(--color-lamp)",
+                  color: "var(--color-lamp)",
+                  padding: "0.45rem 0.8rem",
+                }}
+                onClick={() => setActiveTab("compass")}
+              >
+                <Compass size={16} />
+                <span>Ведение по тактическому компасу ({navCalculation.bearingDeg}°)</span>
+              </button>
+            )}
+
             {/* External Navigation Links */}
             <div style={{ marginTop: "0.8rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
               <a
@@ -908,6 +958,19 @@ export function MapAtlasView() {
                   </button>
                   <button
                     type="button"
+                    className="text-btn"
+                    style={{ fontSize: "0.8rem", padding: "0.2rem 0.5rem" }}
+                    onClick={() => {
+                      setTargetLat(wp.lat.toFixed(4));
+                      setTargetLng(wp.lng.toFixed(4));
+                      setActiveTab("compass");
+                    }}
+                    title="Взять азимут по компасу"
+                  >
+                    🧭 Азимут
+                  </button>
+                  <button
+                    type="button"
                     className="icon-btn"
                     style={{ minHeight: "2rem", padding: "0.2rem" }}
                     onClick={() => handleRemoveWaypoint(wp.id)}
@@ -918,6 +981,42 @@ export function MapAtlasView() {
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* Tactical Compass Tab */}
+      {activeTab === "compass" && (
+        <section>
+          <div style={{ marginBottom: "0.8rem" }}>
+            <h2 className="section-title" style={{ margin: "0 0 0.2rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <Compass size={20} color="var(--color-lamp)" />
+              Тактический компас и азимут
+            </h2>
+            <p className="quiet" style={{ margin: 0 }}>
+              Магнитный и истинный азимут, наведение на укрытия и солнечная астронавигация.
+            </p>
+          </div>
+
+          <TacticalCompass
+            userLocation={userLocation}
+            waypoints={waypoints}
+            targetLat={targetLat}
+            targetLng={targetLng}
+            onSetTarget={(lat, lng) => {
+              setTargetLat(lat);
+              setTargetLng(lng);
+            }}
+            onSwitchToMap={() => {
+              const tLat = parseFloat(targetLat);
+              const tLng = parseFloat(targetLng);
+              if (!isNaN(tLat) && !isNaN(tLng)) {
+                setCenterLat(tLat);
+                setCenterLng(tLng);
+                setZoom(4);
+              }
+              setActiveTab("map");
+            }}
+          />
         </section>
       )}
 
